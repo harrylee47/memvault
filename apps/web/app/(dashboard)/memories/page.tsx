@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { useProjectStore } from "@/store/project";
 import { api } from "@/lib/api-client";
 import { formatDate, truncate } from "@/lib/utils";
@@ -10,6 +10,13 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -18,8 +25,23 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "@/components/ui/toaster";
-import { Plus, Search, Trash2, Eye, Pencil, RefreshCw } from "lucide-react";
+import {
+  Plus,
+  Search,
+  Trash2,
+  Eye,
+  Pencil,
+  RefreshCw,
+  Download,
+  Upload,
+  ArrowUpDown,
+  Filter,
+  History,
+  ChevronDown,
+  ChevronUp,
+} from "lucide-react";
 
 interface Memory {
   id: string;
@@ -29,8 +51,19 @@ interface Memory {
   agent_id: string | null;
   memory_type: string;
   state: string;
+  metadata?: Record<string, any>;
+  source_app?: string;
   created_at: string;
   updated_at: string;
+}
+
+interface MemoryHistoryEntry {
+  id: string;
+  memory_id: string;
+  old_content: string;
+  new_content: string;
+  action: string;
+  created_at: string;
 }
 
 export default function MemoriesPage() {
@@ -55,10 +88,31 @@ export default function MemoriesPage() {
   const [editContent, setEditContent] = useState("");
   const [isEditing, setIsEditing] = useState(false);
   const [showDetailDialog, setShowDetailDialog] = useState(false);
+  const [memoryHistory, setMemoryHistory] = useState<MemoryHistoryEntry[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
 
-  // 过滤
+  // 基础过滤
   const [filterUserId, setFilterUserId] = useState("");
   const [filterAgentId, setFilterAgentId] = useState("");
+
+  // 高级过滤
+  const [showAdvancedFilter, setShowAdvancedFilter] = useState(false);
+  const [filterMemoryType, setFilterMemoryType] = useState<string>("all");
+  const [filterSourceApp, setFilterSourceApp] = useState("");
+  const [filterKeyword, setFilterKeyword] = useState("");
+
+  // 排序控制
+  const [sortBy, setSortBy] = useState<string>("created_at");
+  const [sortOrder, setSortOrder] = useState<string>("desc");
+
+  // 导入对话框
+  const [showImportDialog, setShowImportDialog] = useState(false);
+  const [importJson, setImportJson] = useState("");
+  const [importLoading, setImportLoading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // 导出
+  const [exportLoading, setExportLoading] = useState(false);
 
   const loadMemories = useCallback(async () => {
     if (!currentProject) return;
@@ -67,6 +121,11 @@ export default function MemoriesPage() {
       const params: Record<string, any> = { page: String(page), page_size: "20" };
       if (filterUserId) params.user_id = filterUserId;
       if (filterAgentId) params.agent_id = filterAgentId;
+      if (filterMemoryType && filterMemoryType !== "all") params.memory_type = filterMemoryType;
+      if (filterSourceApp) params.source_app = filterSourceApp;
+      if (filterKeyword) params.keyword = filterKeyword;
+      if (sortBy) params.sort_by = sortBy;
+      if (sortOrder) params.sort_order = sortOrder;
       const data = await api.getMemories(currentProject.id, params);
       setMemories(data.memories);
       setTotal(data.total);
@@ -75,7 +134,7 @@ export default function MemoriesPage() {
     } finally {
       setLoading(false);
     }
-  }, [currentProject, page, filterUserId, filterAgentId]);
+  }, [currentProject, page, filterUserId, filterAgentId, filterMemoryType, filterSourceApp, filterKeyword, sortBy, sortOrder]);
 
   useEffect(() => {
     loadMemories();
@@ -139,11 +198,121 @@ export default function MemoriesPage() {
     }
   };
 
-  const openDetail = (memory: Memory) => {
+  const openDetail = async (memory: Memory) => {
     setSelectedMemory(memory);
     setEditContent(memory.content);
     setIsEditing(false);
     setShowDetailDialog(true);
+    setMemoryHistory([]);
+
+    // 加载历史记录
+    if (currentProject) {
+      setHistoryLoading(true);
+      try {
+        const data = await api.getMemoryHistory(currentProject.id, memory.id);
+        setMemoryHistory(Array.isArray(data) ? data : data.history || []);
+      } catch (err) {
+        // 历史记录加载失败不影响详情显示
+        console.error("Failed to load memory history:", err);
+      } finally {
+        setHistoryLoading(false);
+      }
+    }
+  };
+
+  // 导出记忆
+  const handleExport = async () => {
+    if (!currentProject) return;
+    setExportLoading(true);
+    try {
+      const token = localStorage.getItem("access_token");
+      const res = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL || ""}/api/v1/memories/export?project_id=${currentProject.id}`,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+          method: "POST",
+          body: JSON.stringify({ format: "json" }),
+        }
+      );
+      if (!res.ok) throw new Error("导出失败");
+      const data = await res.json();
+
+      // 下载为 JSON 文件
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `memvault-export-${currentProject.slug || currentProject.id}-${new Date().toISOString().slice(0, 10)}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+      toast({ title: "导出成功" });
+    } catch (err: any) {
+      toast({ title: "导出失败", description: err.message, variant: "destructive" });
+    } finally {
+      setExportLoading(false);
+    }
+  };
+
+  // 导入记忆
+  const handleImport = async () => {
+    if (!currentProject || !importJson.trim()) return;
+    setImportLoading(true);
+    try {
+      let parsed: any;
+      try {
+        parsed = JSON.parse(importJson);
+      } catch {
+        toast({ title: "JSON 格式错误", description: "请输入有效的 JSON", variant: "destructive" });
+        setImportLoading(false);
+        return;
+      }
+
+      const token = localStorage.getItem("access_token");
+      const res = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL || ""}/api/v1/memories/import?project_id=${currentProject.id}`,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+          method: "POST",
+          body: JSON.stringify(parsed),
+        }
+      );
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({ detail: "导入失败" }));
+        throw new Error(errData.detail || "导入失败");
+      }
+
+      toast({ title: "导入成功" });
+      setShowImportDialog(false);
+      setImportJson("");
+      loadMemories();
+    } catch (err: any) {
+      toast({ title: "导入失败", description: err.message, variant: "destructive" });
+    } finally {
+      setImportLoading(false);
+    }
+  };
+
+  // 处理文件上传
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      const text = evt.target?.result as string;
+      setImportJson(text);
+    };
+    reader.readAsText(file);
+    // 重置 input 以便可以再次选择同一文件
+    e.target.value = "";
   };
 
   if (!currentProject) {
@@ -160,6 +329,14 @@ export default function MemoriesPage() {
           <p className="text-muted-foreground">共 {total} 条记忆</p>
         </div>
         <div className="flex gap-2">
+          <Button variant="outline" size="sm" onClick={handleExport} disabled={exportLoading}>
+            <Download className="mr-2 h-4 w-4" />
+            {exportLoading ? "导出中..." : "导出"}
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => setShowImportDialog(true)}>
+            <Upload className="mr-2 h-4 w-4" />
+            导入
+          </Button>
           <Button variant="outline" size="sm" onClick={loadMemories}>
             <RefreshCw className="mr-2 h-4 w-4" />
             刷新
@@ -205,6 +382,7 @@ export default function MemoriesPage() {
       {/* 搜索和过滤 */}
       <Card>
         <CardContent className="pt-6">
+          {/* 搜索栏 */}
           <div className="flex gap-2">
             <Input
               placeholder="搜索记忆..."
@@ -230,6 +408,8 @@ export default function MemoriesPage() {
               </Button>
             )}
           </div>
+
+          {/* 基础过滤 */}
           <div className="mt-3 flex gap-2">
             <Input
               placeholder="过滤 User ID"
@@ -243,7 +423,112 @@ export default function MemoriesPage() {
               onChange={(e) => setFilterAgentId(e.target.value)}
               className="w-48"
             />
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setShowAdvancedFilter(!showAdvancedFilter)}
+              className="ml-auto"
+            >
+              <Filter className="mr-2 h-4 w-4" />
+              高级过滤
+              {showAdvancedFilter ? (
+                <ChevronUp className="ml-1 h-4 w-4" />
+              ) : (
+                <ChevronDown className="ml-1 h-4 w-4" />
+              )}
+            </Button>
           </div>
+
+          {/* 高级过滤 */}
+          {showAdvancedFilter && (
+            <div className="mt-3 rounded-md border p-4 space-y-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                {/* 记忆类型 */}
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-muted-foreground">记忆类型</label>
+                  <Select value={filterMemoryType} onValueChange={(val) => { setFilterMemoryType(val); setPage(1); }}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="全部类型" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">全部类型</SelectItem>
+                      <SelectItem value="semantic">Semantic</SelectItem>
+                      <SelectItem value="episodic">Episodic</SelectItem>
+                      <SelectItem value="procedural">Procedural</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* 来源应用 */}
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-muted-foreground">来源应用</label>
+                  <Input
+                    placeholder="例如: claude, chatgpt"
+                    value={filterSourceApp}
+                    onChange={(e) => { setFilterSourceApp(e.target.value); setPage(1); }}
+                  />
+                </div>
+
+                {/* 关键字搜索 */}
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-muted-foreground">关键字</label>
+                  <Input
+                    placeholder="内容关键字过滤"
+                    value={filterKeyword}
+                    onChange={(e) => { setFilterKeyword(e.target.value); setPage(1); }}
+                  />
+                </div>
+
+                {/* 排序 */}
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-muted-foreground">排序</label>
+                  <div className="flex gap-2">
+                    <Select value={sortBy} onValueChange={setSortBy}>
+                      <SelectTrigger className="flex-1">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="created_at">创建时间</SelectItem>
+                        <SelectItem value="updated_at">更新时间</SelectItem>
+                        <SelectItem value="content">内容</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      onClick={() => setSortOrder(sortOrder === "asc" ? "desc" : "asc")}
+                      title={sortOrder === "asc" ? "升序" : "降序"}
+                    >
+                      <ArrowUpDown className="h-4 w-4" />
+                    </Button>
+                  </div>
+                  <span className="text-[10px] text-muted-foreground">
+                    当前: {sortOrder === "asc" ? "升序" : "降序"}
+                  </span>
+                </div>
+              </div>
+
+              {/* 重置过滤 */}
+              <div className="flex justify-end">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    setFilterMemoryType("all");
+                    setFilterSourceApp("");
+                    setFilterKeyword("");
+                    setSortBy("created_at");
+                    setSortOrder("desc");
+                    setFilterUserId("");
+                    setFilterAgentId("");
+                    setPage(1);
+                  }}
+                >
+                  重置全部过滤
+                </Button>
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -301,6 +586,11 @@ export default function MemoriesPage() {
                           <Badge variant="secondary" className="text-[10px]">
                             {memory.memory_type}
                           </Badge>
+                          {memory.source_app && (
+                            <Badge variant="secondary" className="text-[10px]">
+                              {memory.source_app}
+                            </Badge>
+                          )}
                           {memory.user_id && (
                             <Badge variant="outline" className="text-[10px]">
                               User: {memory.user_id}
@@ -363,77 +653,215 @@ export default function MemoriesPage() {
         </Card>
       )}
 
-      {/* 记忆详情对话框 */}
+      {/* 记忆详情对话框 - 增强版含历史记录 */}
       <Dialog open={showDetailDialog} onOpenChange={setShowDetailDialog}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>记忆详情</DialogTitle>
           </DialogHeader>
           {selectedMemory && (
-            <div className="space-y-4">
-              {isEditing ? (
-                <Textarea
-                  value={editContent}
-                  onChange={(e) => setEditContent(e.target.value)}
-                  rows={6}
-                />
-              ) : (
-                <div className="rounded-md border p-4">
-                  <p className="whitespace-pre-wrap text-sm">{selectedMemory.content}</p>
-                </div>
-              )}
-              <div className="grid grid-cols-2 gap-4 text-sm">
-                <div>
-                  <span className="text-muted-foreground">ID: </span>
-                  <span className="font-mono text-xs">{selectedMemory.id}</span>
-                </div>
-                <div>
-                  <span className="text-muted-foreground">类型: </span>
-                  <Badge variant="secondary">{selectedMemory.memory_type}</Badge>
-                </div>
-                {selectedMemory.user_id && (
-                  <div>
-                    <span className="text-muted-foreground">User ID: </span>
-                    <span>{selectedMemory.user_id}</span>
+            <Tabs defaultValue="content" className="w-full">
+              <TabsList className="grid w-full grid-cols-3">
+                <TabsTrigger value="content">内容</TabsTrigger>
+                <TabsTrigger value="metadata">元数据</TabsTrigger>
+                <TabsTrigger value="history">
+                  <History className="mr-1 h-3 w-3" />
+                  历史记录
+                </TabsTrigger>
+              </TabsList>
+
+              {/* 内容标签 */}
+              <TabsContent value="content" className="space-y-4">
+                {isEditing ? (
+                  <Textarea
+                    value={editContent}
+                    onChange={(e) => setEditContent(e.target.value)}
+                    rows={6}
+                  />
+                ) : (
+                  <div className="rounded-md border p-4">
+                    <p className="whitespace-pre-wrap text-sm">{selectedMemory.content}</p>
                   </div>
                 )}
-                {selectedMemory.agent_id && (
+                <div className="flex justify-end gap-2">
+                  {isEditing ? (
+                    <>
+                      <Button variant="outline" onClick={() => setIsEditing(false)}>
+                        取消
+                      </Button>
+                      <Button onClick={handleUpdate}>保存</Button>
+                    </>
+                  ) : (
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        setIsEditing(true);
+                        setEditContent(selectedMemory?.content || "");
+                      }}
+                    >
+                      <Pencil className="mr-2 h-4 w-4" />
+                      编辑
+                    </Button>
+                  )}
+                </div>
+              </TabsContent>
+
+              {/* 元数据标签 */}
+              <TabsContent value="metadata" className="space-y-4">
+                <div className="grid grid-cols-2 gap-4 text-sm">
                   <div>
-                    <span className="text-muted-foreground">Agent ID: </span>
-                    <span>{selectedMemory.agent_id}</span>
+                    <span className="text-muted-foreground">ID: </span>
+                    <span className="font-mono text-xs break-all">{selectedMemory.id}</span>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">Mem0 ID: </span>
+                    <span className="font-mono text-xs break-all">{selectedMemory.mem0_memory_id || "-"}</span>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">类型: </span>
+                    <Badge variant="secondary">{selectedMemory.memory_type}</Badge>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">状态: </span>
+                    <Badge variant={selectedMemory.state === "active" ? "secondary" : "outline"}>
+                      {selectedMemory.state}
+                    </Badge>
+                  </div>
+                  {selectedMemory.user_id && (
+                    <div>
+                      <span className="text-muted-foreground">User ID: </span>
+                      <span>{selectedMemory.user_id}</span>
+                    </div>
+                  )}
+                  {selectedMemory.agent_id && (
+                    <div>
+                      <span className="text-muted-foreground">Agent ID: </span>
+                      <span>{selectedMemory.agent_id}</span>
+                    </div>
+                  )}
+                  {selectedMemory.source_app && (
+                    <div>
+                      <span className="text-muted-foreground">来源应用: </span>
+                      <span>{selectedMemory.source_app}</span>
+                    </div>
+                  )}
+                  <div>
+                    <span className="text-muted-foreground">创建时间: </span>
+                    <span>{formatDate(selectedMemory.created_at)}</span>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">更新时间: </span>
+                    <span>{formatDate(selectedMemory.updated_at)}</span>
+                  </div>
+                </div>
+                {selectedMemory.metadata && Object.keys(selectedMemory.metadata).length > 0 && (
+                  <div className="mt-4">
+                    <h4 className="text-sm font-medium mb-2">自定义元数据</h4>
+                    <pre className="rounded-md border bg-muted/50 p-3 text-xs overflow-auto max-h-60">
+                      {JSON.stringify(selectedMemory.metadata, null, 2)}
+                    </pre>
                   </div>
                 )}
-                <div>
-                  <span className="text-muted-foreground">创建时间: </span>
-                  <span>{formatDate(selectedMemory.created_at)}</span>
-                </div>
-                <div>
-                  <span className="text-muted-foreground">更新时间: </span>
-                  <span>{formatDate(selectedMemory.updated_at)}</span>
-                </div>
-              </div>
-            </div>
+              </TabsContent>
+
+              {/* 历史记录标签 */}
+              <TabsContent value="history" className="space-y-4">
+                {historyLoading ? (
+                  <div className="py-4 text-center text-muted-foreground">加载历史记录中...</div>
+                ) : memoryHistory.length === 0 ? (
+                  <div className="py-4 text-center text-muted-foreground">暂无历史记录</div>
+                ) : (
+                  <div className="space-y-3">
+                    {memoryHistory.map((entry, idx) => (
+                      <div key={entry.id || idx} className="rounded-md border p-3">
+                        <div className="flex items-center justify-between mb-2">
+                          <Badge variant={entry.action === "create" ? "secondary" : "outline"}>
+                            {entry.action === "create"
+                              ? "创建"
+                              : entry.action === "update"
+                              ? "更新"
+                              : entry.action === "delete"
+                              ? "删除"
+                              : entry.action}
+                          </Badge>
+                          <span className="text-xs text-muted-foreground">
+                            {formatDate(entry.created_at)}
+                          </span>
+                        </div>
+                        {entry.old_content && (
+                          <div className="mb-1">
+                            <span className="text-xs text-muted-foreground">旧内容: </span>
+                            <p className="text-xs line-through text-muted-foreground">
+                              {truncate(entry.old_content, 200)}
+                            </p>
+                          </div>
+                        )}
+                        {entry.new_content && (
+                          <div>
+                            <span className="text-xs text-muted-foreground">新内容: </span>
+                            <p className="text-xs">{truncate(entry.new_content, 200)}</p>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </TabsContent>
+            </Tabs>
           )}
-          <DialogFooter>
-            {isEditing ? (
-              <>
-                <Button variant="outline" onClick={() => setIsEditing(false)}>
-                  取消
-                </Button>
-                <Button onClick={handleUpdate}>保存</Button>
-              </>
-            ) : (
+        </DialogContent>
+      </Dialog>
+
+      {/* 导入对话框 */}
+      <Dialog open={showImportDialog} onOpenChange={setShowImportDialog}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>导入记忆</DialogTitle>
+            <DialogDescription>
+              粘贴 JSON 数据或上传 JSON 文件来导入记忆
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".json"
+                onChange={handleFileUpload}
+                className="hidden"
+              />
               <Button
                 variant="outline"
-                onClick={() => {
-                  setIsEditing(true);
-                  setEditContent(selectedMemory?.content || "");
-                }}
+                onClick={() => fileInputRef.current?.click()}
+                className="w-full"
               >
-                <Pencil className="mr-2 h-4 w-4" />
-                编辑
+                <Upload className="mr-2 h-4 w-4" />
+                选择 JSON 文件
               </Button>
-            )}
+            </div>
+            <div className="relative">
+              <div className="absolute inset-0 flex items-center">
+                <span className="w-full border-t" />
+              </div>
+              <div className="relative flex justify-center text-xs uppercase">
+                <span className="bg-background px-2 text-muted-foreground">或粘贴 JSON</span>
+              </div>
+            </div>
+            <Textarea
+              placeholder='{"memories": [{"content": "记忆内容", "user_id": "user1"}]}'
+              value={importJson}
+              onChange={(e) => setImportJson(e.target.value)}
+              rows={10}
+              className="font-mono text-xs"
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setShowImportDialog(false); setImportJson(""); }}>
+              取消
+            </Button>
+            <Button onClick={handleImport} disabled={importLoading || !importJson.trim()}>
+              {importLoading ? "导入中..." : "导入"}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

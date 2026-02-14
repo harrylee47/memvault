@@ -16,6 +16,7 @@ import {
   Building2,
   Users,
   FolderKanban,
+  ScrollText,
 } from "lucide-react";
 
 const navigation = [
@@ -30,6 +31,7 @@ const settingsNav = [
   { name: "配置中心", href: "/settings/config", icon: Settings },
   { name: "API Key", href: "/settings/api-keys", icon: Key },
   { name: "Webhook", href: "/settings/webhooks", icon: Webhook },
+  { name: "审计日志", href: "/settings/audit-logs", icon: ScrollText },
 ];
 
 const orgNav = [

@@ -33,6 +33,18 @@ class Settings(BaseSettings):
     EMBEDDER_PROVIDER: str = "openai"
     EMBEDDER_MODEL: str = "text-embedding-3-small"
 
+    # Neo4j (optional, for graph store)
+    NEO4J_URL: str = ""
+    NEO4J_USER: str = "neo4j"
+    NEO4J_PASSWORD: str = "password"
+
+    # OAuth (optional)
+    GITHUB_CLIENT_ID: str = ""
+    GITHUB_CLIENT_SECRET: str = ""
+    GOOGLE_CLIENT_ID: str = ""
+    GOOGLE_CLIENT_SECRET: str = ""
+    OAUTH_REDIRECT_BASE: str = "http://localhost:3001"
+
     @property
     def DATABASE_URL(self) -> str:
         return (

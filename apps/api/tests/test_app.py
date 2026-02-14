@@ -6,7 +6,7 @@ class TestAppStartup:
     def test_app_created(self):
         assert app is not None
         assert app.title == "MemVault API"
-        assert app.version == "0.1.0"
+        assert app.version == "1.0.0"
 
     def test_routes_registered(self):
         route_paths = [r.path for r in app.routes if hasattr(r, "path")]
