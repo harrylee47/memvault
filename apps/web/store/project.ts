@@ -24,7 +24,7 @@ interface ProjectState {
   currentOrg: Organization | null;
   isLoading: boolean;
   loadOrgsAndProjects: () => Promise<void>;
-  setCurrentProject: (project: Project) => void;
+  setCurrentProject: (project: Project | null) => void;
   setCurrentOrg: (org: Organization) => void;
 }
 
@@ -53,6 +53,9 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
           const project = projects.find((p: Project) => p.id === savedProjectId) || projects[0];
           set({ currentProject: project });
           localStorage.setItem("current_project_id", project.id);
+        } else {
+          set({ currentProject: null });
+          localStorage.removeItem("current_project_id");
         }
         localStorage.setItem("current_org_id", org.id);
       }
@@ -63,8 +66,12 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     }
   },
 
-  setCurrentProject: (project: Project) => {
-    localStorage.setItem("current_project_id", project.id);
+  setCurrentProject: (project: Project | null) => {
+    if (project) {
+      localStorage.setItem("current_project_id", project.id);
+    } else {
+      localStorage.removeItem("current_project_id");
+    }
     set({ currentProject: project });
   },
 

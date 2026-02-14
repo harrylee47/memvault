@@ -2,7 +2,7 @@
 import uuid
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, func
 from app.database import get_db
 from app.dependencies import get_current_user, AuthContext
 from app.models.organization import Organization, OrgMember, OrgRole
@@ -276,3 +276,105 @@ async def remove_member(
 
     await db.delete(member)
     await log_audit(db, org_id, auth.user_id, "remove_member", "organization", member_id)
+
+
+# ---- 计费 / 计划 ----
+
+PLAN_LIMITS = {
+    "free": {"memories": 10000, "requests": 1000, "projects": 1},
+    "starter": {"memories": 50000, "requests": 5000, "projects": 3},
+    "pro": {"memories": -1, "requests": 50000, "projects": -1},
+    "enterprise": {"memories": -1, "requests": -1, "projects": -1},
+}
+
+
+@router.get("/{org_id}/billing")
+async def get_billing(
+    org_id: str,
+    auth: AuthContext = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """获取计费和用量信息"""
+    from app.models.project import Project
+    from app.models.memory import Memory, MemoryState
+    from app.models.request_log import RequestLog
+    from datetime import datetime, timedelta
+
+    result = await db.execute(select(Organization).where(Organization.id == org_id))
+    org = result.scalar_one_or_none()
+    if not org:
+        raise HTTPException(status_code=404, detail="Organization not found")
+
+    # 获取所有项目 ID
+    proj_result = await db.execute(select(Project.id).where(Project.org_id == org_id))
+    project_ids = [row[0] for row in proj_result.all()]
+
+    # 统计记忆总数
+    memory_count = 0
+    if project_ids:
+        mem_result = await db.execute(
+            select(func.count()).select_from(Memory).where(
+                Memory.project_id.in_(project_ids),
+                Memory.state == MemoryState.ACTIVE,
+            )
+        )
+        memory_count = mem_result.scalar() or 0
+
+    # 当月请求数
+    now = datetime.utcnow()
+    month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    request_count = 0
+    if project_ids:
+        req_result = await db.execute(
+            select(func.count()).select_from(RequestLog).where(
+                RequestLog.project_id.in_(project_ids),
+                RequestLog.created_at >= month_start,
+            )
+        )
+        request_count = req_result.scalar() or 0
+
+    plan = org.plan or "free"
+    limits = PLAN_LIMITS.get(plan, PLAN_LIMITS["free"])
+
+    return {
+        "plan": plan,
+        "billing_period_start": month_start.isoformat(),
+        "billing_period_end": (month_start + timedelta(days=32)).replace(day=1).isoformat(),
+        "usage": {
+            "memories": memory_count,
+            "requests": request_count,
+            "projects": len(project_ids),
+        },
+        "limits": limits,
+    }
+
+
+@router.put("/{org_id}/plan")
+async def update_plan(
+    org_id: str,
+    data: dict,
+    auth: AuthContext = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """更新组织计划（仅 Owner/Admin）"""
+    result = await db.execute(select(Organization).where(Organization.id == org_id))
+    org = result.scalar_one_or_none()
+    if not org:
+        raise HTTPException(status_code=404, detail="Organization not found")
+
+    member_result = await db.execute(
+        select(OrgMember).where(
+            OrgMember.org_id == org_id, OrgMember.user_id == auth.user_id,
+            OrgMember.role.in_([OrgRole.OWNER, OrgRole.ADMIN]),
+        )
+    )
+    if not member_result.scalar_one_or_none():
+        raise HTTPException(status_code=403, detail="Insufficient permissions")
+
+    new_plan = data.get("plan", "free")
+    valid_plans = list(PLAN_LIMITS.keys())
+    if new_plan not in valid_plans:
+        raise HTTPException(status_code=400, detail=f"Invalid plan: {new_plan}")
+
+    org.plan = new_plan
+    return {"plan": org.plan}

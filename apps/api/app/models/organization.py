@@ -8,6 +8,7 @@ import enum
 
 class OrgPlan(str, enum.Enum):
     FREE = "free"
+    STARTER = "starter"
     PRO = "pro"
     ENTERPRISE = "enterprise"
 

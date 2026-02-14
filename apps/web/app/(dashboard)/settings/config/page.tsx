@@ -13,17 +13,29 @@ import { toast } from "@/components/ui/toaster";
 import { Save } from "lucide-react";
 
 const LLM_MODELS: Record<string, string[]> = {
-  openai: ["gpt-4o", "gpt-4o-mini", "gpt-4-turbo", "gpt-3.5-turbo"],
+  openai: ["gpt-4o", "gpt-4o-mini", "gpt-4-turbo", "gpt-4.1", "gpt-4.1-mini", "gpt-4.1-nano", "o3-mini"],
   anthropic: ["claude-sonnet-4-5-20250929", "claude-haiku-4-5-20251001", "claude-opus-4-6"],
-  together: ["meta-llama/Llama-3-70b-chat-hf", "mistralai/Mixtral-8x7B-Instruct-v0.1"],
-  groq: ["llama-3.1-70b-versatile", "llama-3.1-8b-instant", "mixtral-8x7b-32768"],
-  ollama: ["llama3", "mistral", "phi3"],
+  gemini: ["gemini-2.0-flash", "gemini-2.0-flash-lite", "gemini-1.5-pro", "gemini-1.5-flash"],
+  together: ["meta-llama/Llama-3.3-70B-Instruct-Turbo", "meta-llama/Llama-3.1-8B-Instruct-Turbo", "mistralai/Mixtral-8x7B-Instruct-v0.1", "Qwen/Qwen2.5-72B-Instruct-Turbo"],
+  groq: ["llama-3.3-70b-versatile", "llama-3.1-8b-instant", "mixtral-8x7b-32768", "gemma2-9b-it"],
+  ollama: ["llama3.2", "llama3.1", "mistral", "phi3", "qwen2.5", "gemma2"],
 };
 
 const EMBEDDER_MODELS: Record<string, string[]> = {
   openai: ["text-embedding-3-small", "text-embedding-3-large", "text-embedding-ada-002"],
-  huggingface: ["sentence-transformers/all-MiniLM-L6-v2", "BAAI/bge-large-en-v1.5"],
-  ollama: ["nomic-embed-text", "mxbai-embed-large"],
+  gemini: ["text-embedding-004", "embedding-001"],
+  huggingface: ["sentence-transformers/all-MiniLM-L6-v2", "BAAI/bge-large-en-v1.5", "BAAI/bge-m3"],
+  ollama: ["nomic-embed-text", "mxbai-embed-large", "all-minilm"],
+};
+
+const DEFAULT_API_BASE: Record<string, string> = {
+  openai: "https://api.openai.com/v1",
+  anthropic: "https://api.anthropic.com",
+  gemini: "https://generativelanguage.googleapis.com/v1beta",
+  together: "https://api.together.xyz/v1",
+  groq: "https://api.groq.com/openai/v1",
+  ollama: "http://localhost:11434",
+  huggingface: "https://api-inference.huggingface.co",
 };
 
 const CUSTOM_VALUE = "__custom__";
@@ -34,15 +46,21 @@ export default function ConfigPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
-  // Form state
+  // LLM Form state
   const [llmProvider, setLlmProvider] = useState("openai");
   const [llmModel, setLlmModel] = useState("gpt-4o-mini");
   const [llmModelCustom, setLlmModelCustom] = useState(false);
   const [llmApiKey, setLlmApiKey] = useState("");
-  const [llmTemperature, setLlmTemperature] = useState(0);
+  const [llmApiBaseUrl, setLlmApiBaseUrl] = useState("");
+  const [llmTemperature, setLlmTemperature] = useState(0.7);
+
+  // Embedder Form state
   const [embedderProvider, setEmbedderProvider] = useState("openai");
   const [embedderModel, setEmbedderModel] = useState("text-embedding-3-small");
   const [embedderModelCustom, setEmbedderModelCustom] = useState(false);
+  const [embedderApiBaseUrl, setEmbedderApiBaseUrl] = useState("");
+
+  // Advanced
   const [customInstructions, setCustomInstructions] = useState("");
   const [maxMemories, setMaxMemories] = useState(10000);
 
@@ -58,10 +76,10 @@ export default function ConfigPage() {
           const model = data.llm.model || "gpt-4o-mini";
           setLlmProvider(provider);
           setLlmModel(model);
-          // 检查模型是否在预设列表中
           const presetModels = LLM_MODELS[provider] || [];
           setLlmModelCustom(!presetModels.includes(model));
-          setLlmTemperature(data.llm.temperature ?? 0);
+          setLlmTemperature(data.llm.temperature ?? 0.7);
+          setLlmApiBaseUrl(data.llm.api_base_url || "");
         }
         if (data.embedder) {
           const provider = data.embedder.provider || "openai";
@@ -70,6 +88,7 @@ export default function ConfigPage() {
           setEmbedderModel(model);
           const presetModels = EMBEDDER_MODELS[provider] || [];
           setEmbedderModelCustom(!presetModels.includes(model));
+          setEmbedderApiBaseUrl(data.embedder.api_base_url || "");
         }
         setCustomInstructions(data.custom_instructions || "");
         setMaxMemories(data.max_memories || 10000);
@@ -78,7 +97,6 @@ export default function ConfigPage() {
       .finally(() => setLoading(false));
   }, [currentProject]);
 
-  // 切换 LLM Provider 时重置模型为该 provider 的第一个预设值
   const handleLlmProviderChange = (provider: string) => {
     setLlmProvider(provider);
     const models = LLM_MODELS[provider] || [];
@@ -89,9 +107,9 @@ export default function ConfigPage() {
       setLlmModel("");
       setLlmModelCustom(true);
     }
+    setLlmApiBaseUrl("");
   };
 
-  // 切换 Embedder Provider 时重置模型
   const handleEmbedderProviderChange = (provider: string) => {
     setEmbedderProvider(provider);
     const models = EMBEDDER_MODELS[provider] || [];
@@ -102,6 +120,7 @@ export default function ConfigPage() {
       setEmbedderModel("");
       setEmbedderModelCustom(true);
     }
+    setEmbedderApiBaseUrl("");
   };
 
   const handleLlmModelSelect = (value: string) => {
@@ -133,11 +152,13 @@ export default function ConfigPage() {
           provider: llmProvider,
           model: llmModel,
           api_key: llmApiKey || undefined,
+          api_base_url: llmApiBaseUrl || undefined,
           temperature: llmTemperature,
         },
         embedder: {
           provider: embedderProvider,
           model: embedderModel,
+          api_base_url: embedderApiBaseUrl || undefined,
         },
         custom_instructions: customInstructions || undefined,
         max_memories: maxMemories,
@@ -191,6 +212,7 @@ export default function ConfigPage() {
                 <SelectContent>
                   <SelectItem value="openai">OpenAI</SelectItem>
                   <SelectItem value="anthropic">Anthropic</SelectItem>
+                  <SelectItem value="gemini">Google Gemini</SelectItem>
                   <SelectItem value="together">Together AI</SelectItem>
                   <SelectItem value="groq">Groq</SelectItem>
                   <SelectItem value="ollama">Ollama</SelectItem>
@@ -247,6 +269,17 @@ export default function ConfigPage() {
               />
             </div>
             <div className="space-y-2">
+              <Label>API Base URL (可选覆盖)</Label>
+              <Input
+                placeholder={DEFAULT_API_BASE[llmProvider] || "使用官方默认地址"}
+                value={llmApiBaseUrl}
+                onChange={(e) => setLlmApiBaseUrl(e.target.value)}
+              />
+              <p className="text-xs text-muted-foreground">
+                留空使用官方默认地址，可自定义为代理或兼容 API 地址
+              </p>
+            </div>
+            <div className="space-y-2">
               <Label>Temperature</Label>
               <Input
                 type="number"
@@ -256,6 +289,9 @@ export default function ConfigPage() {
                 value={llmTemperature}
                 onChange={(e) => setLlmTemperature(parseFloat(e.target.value))}
               />
+              <p className="text-xs text-muted-foreground">
+                推荐值 0.7，较低值输出更确定，较高值输出更多样
+              </p>
             </div>
           </div>
         </CardContent>
@@ -277,6 +313,7 @@ export default function ConfigPage() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="openai">OpenAI</SelectItem>
+                  <SelectItem value="gemini">Google Gemini</SelectItem>
                   <SelectItem value="huggingface">HuggingFace</SelectItem>
                   <SelectItem value="ollama">Ollama</SelectItem>
                 </SelectContent>
@@ -321,6 +358,17 @@ export default function ConfigPage() {
                   </SelectContent>
                 </Select>
               )}
+            </div>
+            <div className="col-span-2 space-y-2">
+              <Label>API Base URL (可选覆盖)</Label>
+              <Input
+                placeholder={DEFAULT_API_BASE[embedderProvider] || "使用官方默认地址"}
+                value={embedderApiBaseUrl}
+                onChange={(e) => setEmbedderApiBaseUrl(e.target.value)}
+              />
+              <p className="text-xs text-muted-foreground">
+                留空使用官方默认地址
+              </p>
             </div>
           </div>
         </CardContent>

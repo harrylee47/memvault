@@ -31,10 +31,10 @@ import { Plus, Trash2, Users, Shield, Mail } from "lucide-react";
 interface Member {
   id: string;
   user_id: string;
-  name: string;
-  email: string;
+  user_name: string | null;
+  user_email: string | null;
   role: string;
-  joined_at: string;
+  created_at: string;
 }
 
 const ROLE_LABELS: Record<string, string> = {
@@ -112,7 +112,7 @@ export default function MembersPage() {
 
   const handleRemove = async (member: Member) => {
     if (!currentOrg) return;
-    if (!confirm(`确定要移除成员 ${member.name || member.email} 吗？此操作不可撤销。`)) return;
+    if (!confirm(`确定要移除成员 ${member.user_name || member.user_email} 吗？此操作不可撤销。`)) return;
     try {
       await api.removeMember(currentOrg.id, member.id);
       toast({ title: "成员已移除" });
@@ -205,13 +205,13 @@ export default function MembersPage() {
                 >
                   <div className="flex items-center gap-2">
                     <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/10 text-sm font-medium text-primary">
-                      {(member.name || member.email)?.[0]?.toUpperCase() || "?"}
+                      {(member.user_name || member.user_email)?.[0]?.toUpperCase() || "?"}
                     </div>
-                    <span className="font-medium">{member.name || "-"}</span>
+                    <span className="font-medium">{member.user_name || "-"}</span>
                   </div>
                   <div className="flex items-center gap-1 text-sm text-muted-foreground">
                     <Mail className="h-3.5 w-3.5" />
-                    {member.email}
+                    {member.user_email || "-"}
                   </div>
                   <div>
                     <Select
@@ -230,7 +230,7 @@ export default function MembersPage() {
                     </Select>
                   </div>
                   <div className="text-sm text-muted-foreground">
-                    {formatDate(member.joined_at)}
+                    {formatDate(member.created_at)}
                   </div>
                   <div>
                     <Button

@@ -3,10 +3,10 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
+import { useAuthStore } from "@/store/auth";
 import {
   Brain,
   LayoutDashboard,
-  Search,
   Bot,
   Network,
   BarChart3,
@@ -17,10 +17,14 @@ import {
   Users,
   FolderKanban,
   ScrollText,
+  ArrowUpRight,
+  CreditCard,
+  ShieldCheck,
 } from "lucide-react";
 
 const navigation = [
   { name: "概览", href: "/", icon: LayoutDashboard },
+  { name: "Requests", href: "/requests", icon: ArrowUpRight },
   { name: "记忆管理", href: "/memories", icon: Brain },
   { name: "Agent", href: "/agents", icon: Bot },
   { name: "图谱", href: "/graph", icon: Network },
@@ -40,8 +44,13 @@ const orgNav = [
   { name: "项目", href: "/org/projects", icon: FolderKanban },
 ];
 
+const accountNav = [
+  { name: "Billing & Usage", href: "/billing", icon: CreditCard },
+];
+
 export function Sidebar() {
   const pathname = usePathname();
+  const { user } = useAuthStore();
 
   return (
     <div className="flex h-full w-64 flex-col border-r bg-card">
@@ -109,6 +118,46 @@ export function Sidebar() {
             {item.name}
           </Link>
         ))}
+
+        <div className="mb-2 mt-6 px-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+          账户
+        </div>
+        {accountNav.map((item) => (
+          <Link
+            key={item.href}
+            href={item.href}
+            className={cn(
+              "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors",
+              pathname === item.href
+                ? "bg-primary/10 text-primary"
+                : "text-muted-foreground hover:bg-accent hover:text-foreground"
+            )}
+          >
+            <item.icon className="h-4 w-4" />
+            {item.name}
+          </Link>
+        ))}
+
+        {/* 系统管理 - 仅管理员可见 */}
+        {(user as any)?.is_admin && (
+          <>
+            <div className="mb-2 mt-6 px-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              系统管理
+            </div>
+            <Link
+              href="/admin"
+              className={cn(
+                "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors",
+                pathname === "/admin" || pathname?.startsWith("/admin/")
+                  ? "bg-primary/10 text-primary"
+                  : "text-muted-foreground hover:bg-accent hover:text-foreground"
+              )}
+            >
+              <ShieldCheck className="h-4 w-4" />
+              系统管理
+            </Link>
+          </>
+        )}
       </nav>
     </div>
   );

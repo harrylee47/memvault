@@ -391,6 +391,58 @@ class ApiClient {
     const searchParams = new URLSearchParams({ project_id: projectId, ...params });
     return this.request<any>(`/api/v1/audit-logs?${searchParams}`);
   }
+
+  // =====================
+  // Requests
+  // =====================
+  async getRequests(projectId: string, params: Record<string, any> = {}) {
+    const searchParams = new URLSearchParams({ project_id: projectId, ...params });
+    return this.request<any>(`/api/v1/requests?${searchParams}`);
+  }
+
+  async getRequestStats(projectId: string, days?: number) {
+    const params = new URLSearchParams({ project_id: projectId });
+    if (days !== undefined) params.set("days", String(days));
+    return this.request<any>(`/api/v1/requests/stats?${params}`);
+  }
+
+  // =====================
+  // Billing / Plans
+  // =====================
+  async getBillingUsage(orgId: string) {
+    return this.request<any>(`/api/v1/organizations/${orgId}/billing`);
+  }
+
+  async updateOrgPlan(orgId: string, plan: string) {
+    return this.request<any>(`/api/v1/organizations/${orgId}/plan`, {
+      method: "PUT",
+      body: JSON.stringify({ plan }),
+    });
+  }
+
+  // =====================
+  // Admin
+  // =====================
+  async adminGetUsers(params: Record<string, any> = {}) {
+    const searchParams = new URLSearchParams(params);
+    return this.request<any>(`/api/v1/admin/users?${searchParams}`);
+  }
+
+  async adminUpdateUser(userId: string, data: any) {
+    return this.request<any>(`/api/v1/admin/users/${userId}`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    });
+  }
+
+  async adminGetOrganizations(params: Record<string, any> = {}) {
+    const searchParams = new URLSearchParams(params);
+    return this.request<any>(`/api/v1/admin/organizations?${searchParams}`);
+  }
+
+  async adminGetStats() {
+    return this.request<any>("/api/v1/admin/stats");
+  }
 }
 
 export const api = new ApiClient(API_BASE);

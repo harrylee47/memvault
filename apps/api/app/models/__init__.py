@@ -6,6 +6,7 @@ from app.models.agent import Agent
 from app.models.api_key import ApiKey
 from app.models.webhook import Webhook
 from app.models.audit_log import AuditLog
+from app.models.request_log import RequestLog
 
 __all__ = [
     "User",
@@ -20,4 +21,5 @@ __all__ = [
     "ApiKey",
     "Webhook",
     "AuditLog",
+    "RequestLog",
 ]

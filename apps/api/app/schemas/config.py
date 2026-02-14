@@ -5,7 +5,8 @@ class LLMConfig(BaseModel):
     provider: str = "openai"
     model: str = "gpt-4o-mini"
     api_key: str | None = None
-    temperature: float = 0.0
+    api_base_url: str | None = None
+    temperature: float = 0.7
     max_tokens: int = 1500
 
 
@@ -13,6 +14,7 @@ class EmbedderConfig(BaseModel):
     provider: str = "openai"
     model: str = "text-embedding-3-small"
     api_key: str | None = None
+    api_base_url: str | None = None
 
 
 class VectorStoreConfig(BaseModel):

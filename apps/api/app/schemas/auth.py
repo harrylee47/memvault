@@ -20,6 +20,7 @@ class UserResponse(BaseModel):
     provider: str
     avatar_url: str | None = None
     is_active: bool
+    is_admin: bool = False
     created_at: datetime
 
     class Config:
