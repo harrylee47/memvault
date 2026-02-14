@@ -12,6 +12,22 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { toast } from "@/components/ui/toaster";
 import { Save } from "lucide-react";
 
+const LLM_MODELS: Record<string, string[]> = {
+  openai: ["gpt-4o", "gpt-4o-mini", "gpt-4-turbo", "gpt-3.5-turbo"],
+  anthropic: ["claude-sonnet-4-5-20250929", "claude-haiku-4-5-20251001", "claude-opus-4-6"],
+  together: ["meta-llama/Llama-3-70b-chat-hf", "mistralai/Mixtral-8x7B-Instruct-v0.1"],
+  groq: ["llama-3.1-70b-versatile", "llama-3.1-8b-instant", "mixtral-8x7b-32768"],
+  ollama: ["llama3", "mistral", "phi3"],
+};
+
+const EMBEDDER_MODELS: Record<string, string[]> = {
+  openai: ["text-embedding-3-small", "text-embedding-3-large", "text-embedding-ada-002"],
+  huggingface: ["sentence-transformers/all-MiniLM-L6-v2", "BAAI/bge-large-en-v1.5"],
+  ollama: ["nomic-embed-text", "mxbai-embed-large"],
+};
+
+const CUSTOM_VALUE = "__custom__";
+
 export default function ConfigPage() {
   const { currentProject } = useProjectStore();
   const [config, setConfig] = useState<any>(null);
@@ -21,10 +37,12 @@ export default function ConfigPage() {
   // Form state
   const [llmProvider, setLlmProvider] = useState("openai");
   const [llmModel, setLlmModel] = useState("gpt-4o-mini");
+  const [llmModelCustom, setLlmModelCustom] = useState(false);
   const [llmApiKey, setLlmApiKey] = useState("");
   const [llmTemperature, setLlmTemperature] = useState(0);
   const [embedderProvider, setEmbedderProvider] = useState("openai");
   const [embedderModel, setEmbedderModel] = useState("text-embedding-3-small");
+  const [embedderModelCustom, setEmbedderModelCustom] = useState(false);
   const [customInstructions, setCustomInstructions] = useState("");
   const [maxMemories, setMaxMemories] = useState(10000);
 
@@ -36,13 +54,22 @@ export default function ConfigPage() {
       .then((data) => {
         setConfig(data);
         if (data.llm) {
-          setLlmProvider(data.llm.provider || "openai");
-          setLlmModel(data.llm.model || "gpt-4o-mini");
+          const provider = data.llm.provider || "openai";
+          const model = data.llm.model || "gpt-4o-mini";
+          setLlmProvider(provider);
+          setLlmModel(model);
+          // 检查模型是否在预设列表中
+          const presetModels = LLM_MODELS[provider] || [];
+          setLlmModelCustom(!presetModels.includes(model));
           setLlmTemperature(data.llm.temperature ?? 0);
         }
         if (data.embedder) {
-          setEmbedderProvider(data.embedder.provider || "openai");
-          setEmbedderModel(data.embedder.model || "text-embedding-3-small");
+          const provider = data.embedder.provider || "openai";
+          const model = data.embedder.model || "text-embedding-3-small";
+          setEmbedderProvider(provider);
+          setEmbedderModel(model);
+          const presetModels = EMBEDDER_MODELS[provider] || [];
+          setEmbedderModelCustom(!presetModels.includes(model));
         }
         setCustomInstructions(data.custom_instructions || "");
         setMaxMemories(data.max_memories || 10000);
@@ -50,6 +77,52 @@ export default function ConfigPage() {
       .catch(console.error)
       .finally(() => setLoading(false));
   }, [currentProject]);
+
+  // 切换 LLM Provider 时重置模型为该 provider 的第一个预设值
+  const handleLlmProviderChange = (provider: string) => {
+    setLlmProvider(provider);
+    const models = LLM_MODELS[provider] || [];
+    if (models.length > 0) {
+      setLlmModel(models[0]);
+      setLlmModelCustom(false);
+    } else {
+      setLlmModel("");
+      setLlmModelCustom(true);
+    }
+  };
+
+  // 切换 Embedder Provider 时重置模型
+  const handleEmbedderProviderChange = (provider: string) => {
+    setEmbedderProvider(provider);
+    const models = EMBEDDER_MODELS[provider] || [];
+    if (models.length > 0) {
+      setEmbedderModel(models[0]);
+      setEmbedderModelCustom(false);
+    } else {
+      setEmbedderModel("");
+      setEmbedderModelCustom(true);
+    }
+  };
+
+  const handleLlmModelSelect = (value: string) => {
+    if (value === CUSTOM_VALUE) {
+      setLlmModelCustom(true);
+      setLlmModel("");
+    } else {
+      setLlmModelCustom(false);
+      setLlmModel(value);
+    }
+  };
+
+  const handleEmbedderModelSelect = (value: string) => {
+    if (value === CUSTOM_VALUE) {
+      setEmbedderModelCustom(true);
+      setEmbedderModel("");
+    } else {
+      setEmbedderModelCustom(false);
+      setEmbedderModel(value);
+    }
+  };
 
   const handleSave = async () => {
     if (!currentProject) return;
@@ -85,6 +158,9 @@ export default function ConfigPage() {
     return <div className="text-muted-foreground">加载中...</div>;
   }
 
+  const llmModels = LLM_MODELS[llmProvider] || [];
+  const embedderModels = EMBEDDER_MODELS[embedderProvider] || [];
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -108,7 +184,7 @@ export default function ConfigPage() {
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label>Provider</Label>
-              <Select value={llmProvider} onValueChange={setLlmProvider}>
+              <Select value={llmProvider} onValueChange={handleLlmProviderChange}>
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
@@ -123,7 +199,43 @@ export default function ConfigPage() {
             </div>
             <div className="space-y-2">
               <Label>Model</Label>
-              <Input value={llmModel} onChange={(e) => setLlmModel(e.target.value)} />
+              {llmModelCustom ? (
+                <div className="flex gap-2">
+                  <Input
+                    placeholder="输入自定义模型名称"
+                    value={llmModel}
+                    onChange={(e) => setLlmModel(e.target.value)}
+                    className="flex-1"
+                  />
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      if (llmModels.length > 0) {
+                        setLlmModelCustom(false);
+                        setLlmModel(llmModels[0]);
+                      }
+                    }}
+                    disabled={llmModels.length === 0}
+                  >
+                    预设列表
+                  </Button>
+                </div>
+              ) : (
+                <Select value={llmModel} onValueChange={handleLlmModelSelect}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="选择模型" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {llmModels.map((model) => (
+                      <SelectItem key={model} value={model}>
+                        {model}
+                      </SelectItem>
+                    ))}
+                    <SelectItem value={CUSTOM_VALUE}>自定义...</SelectItem>
+                  </SelectContent>
+                </Select>
+              )}
             </div>
             <div className="space-y-2">
               <Label>API Key (可选覆盖)</Label>
@@ -159,7 +271,7 @@ export default function ConfigPage() {
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label>Provider</Label>
-              <Select value={embedderProvider} onValueChange={setEmbedderProvider}>
+              <Select value={embedderProvider} onValueChange={handleEmbedderProviderChange}>
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
@@ -172,7 +284,43 @@ export default function ConfigPage() {
             </div>
             <div className="space-y-2">
               <Label>Model</Label>
-              <Input value={embedderModel} onChange={(e) => setEmbedderModel(e.target.value)} />
+              {embedderModelCustom ? (
+                <div className="flex gap-2">
+                  <Input
+                    placeholder="输入自定义模型名称"
+                    value={embedderModel}
+                    onChange={(e) => setEmbedderModel(e.target.value)}
+                    className="flex-1"
+                  />
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      if (embedderModels.length > 0) {
+                        setEmbedderModelCustom(false);
+                        setEmbedderModel(embedderModels[0]);
+                      }
+                    }}
+                    disabled={embedderModels.length === 0}
+                  >
+                    预设列表
+                  </Button>
+                </div>
+              ) : (
+                <Select value={embedderModel} onValueChange={handleEmbedderModelSelect}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="选择模型" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {embedderModels.map((model) => (
+                      <SelectItem key={model} value={model}>
+                        {model}
+                      </SelectItem>
+                    ))}
+                    <SelectItem value={CUSTOM_VALUE}>自定义...</SelectItem>
+                  </SelectContent>
+                </Select>
+              )}
             </div>
           </div>
         </CardContent>

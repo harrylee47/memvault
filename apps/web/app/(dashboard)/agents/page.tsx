@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { useProjectStore } from "@/store/project";
 import { api } from "@/lib/api-client";
-import { formatDate, truncate } from "@/lib/utils";
+import { formatDate, truncate, generateSlug, validateAgentId } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -35,12 +35,13 @@ import {
   Brain,
   Clock,
   ChevronRight,
-  X,
   BookOpen,
   Code,
   Webhook,
   Copy,
   Check,
+  AlertCircle,
+  Key,
 } from "lucide-react";
 
 interface Agent {
@@ -76,11 +77,12 @@ export default function AgentsPage() {
   const [showDialog, setShowDialog] = useState(false);
   const [name, setName] = useState("");
   const [agentId, setAgentId] = useState("");
+  const [agentIdTouched, setAgentIdTouched] = useState(false);
   const [agentType, setAgentType] = useState("api");
   const [creating, setCreating] = useState(false);
 
   // Agent 统计缓存
-  const [agentStatsMap, setAgentStatsMap] = useState<Record<string, AgentStats>>({});
+  const [agentStatsMap, setAgentStatsMap] = useState<Record<string, AgentStats | null>>({});
 
   // 详情面板
   const [expandedAgentId, setExpandedAgentId] = useState<string | null>(null);
@@ -96,6 +98,18 @@ export default function AgentsPage() {
   // 删除确认
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
+  // Agent ID 校验
+  const agentIdValid = agentId.length === 0 || validateAgentId(agentId);
+  const canCreate = !!name && !!agentId && validateAgentId(agentId) && !creating;
+
+  // 根据名称自动建议 agent_id
+  useEffect(() => {
+    if (!agentIdTouched && name) {
+      const suggested = generateSlug(name);
+      setAgentId(suggested || "");
+    }
+  }, [name, agentIdTouched]);
+
   const loadAgents = useCallback(async () => {
     if (!currentProject) return;
     setLoading(true);
@@ -104,14 +118,15 @@ export default function AgentsPage() {
       setAgents(data);
 
       // 加载每个 agent 的统计信息
-      const statsMap: Record<string, AgentStats> = {};
+      const statsMap: Record<string, AgentStats | null> = {};
       await Promise.allSettled(
         data.map(async (agent: Agent) => {
           try {
             const stats = await api.getAgentStats(agent.id, currentProject.id);
             statsMap[agent.id] = stats;
           } catch {
-            statsMap[agent.id] = {};
+            // 统计加载失败时标记为 null，而非空对象
+            statsMap[agent.id] = null;
           }
         })
       );
@@ -128,7 +143,7 @@ export default function AgentsPage() {
   }, [loadAgents]);
 
   const handleCreate = async () => {
-    if (!currentProject || !name || !agentId) return;
+    if (!currentProject || !canCreate) return;
     setCreating(true);
     try {
       await api.createAgent(currentProject.id, {
@@ -140,6 +155,7 @@ export default function AgentsPage() {
       setShowDialog(false);
       setName("");
       setAgentId("");
+      setAgentIdTouched(false);
       loadAgents();
     } catch (err: any) {
       toast({
@@ -200,6 +216,7 @@ export default function AgentsPage() {
       if (statsData.status === "fulfilled") {
         setDetailStats(statsData.value);
       }
+      // statsData 失败时 detailStats 保持为 null，UI 会显示"暂无统计"
     } catch (err) {
       console.error("Failed to load agent details:", err);
     } finally {
@@ -232,6 +249,69 @@ export default function AgentsPage() {
     return process.env.NEXT_PUBLIC_API_URL || "";
   };
 
+  // 渲染统计摘要（处理 null / 空对象情况）
+  const renderStatsSummary = (stats: AgentStats | null) => {
+    if (stats === null) {
+      return (
+        <div className="flex items-center gap-1 text-xs text-muted-foreground">
+          <span>暂无统计</span>
+        </div>
+      );
+    }
+    const memoryCount = stats.memory_count ?? stats.total_memories ?? 0;
+    const lastActive = stats.last_active || stats.last_activity || null;
+    return (
+      <div className="flex items-center gap-4 text-xs text-muted-foreground">
+        <div className="flex items-center gap-1">
+          <Brain className="h-3 w-3" />
+          <span>{memoryCount} 条记忆</span>
+        </div>
+        {lastActive && (
+          <div className="flex items-center gap-1">
+            <Clock className="h-3 w-3" />
+            <span>最后活跃: {formatDate(lastActive)}</span>
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  // 渲染详情统计信息（处理 null 情况）
+  const renderDetailStats = () => {
+    if (!detailStats || Object.keys(detailStats).length === 0) {
+      return (
+        <div className="flex flex-col items-center justify-center py-6 text-muted-foreground">
+          <AlertCircle className="h-8 w-8 mb-2 opacity-50" />
+          <p className="text-sm">暂无统计数据</p>
+          <p className="text-xs mt-1">该 Agent 尚未产生活动记录</p>
+        </div>
+      );
+    }
+    return (
+      <div className="space-y-3">
+        {Object.entries(detailStats).map(([key, value]) => (
+          <div
+            key={key}
+            className="flex justify-between items-center text-sm"
+          >
+            <span className="text-muted-foreground">
+              {key === "memory_count" || key === "total_memories"
+                ? "记忆总数"
+                : key === "last_active" || key === "last_activity"
+                ? "最后活跃"
+                : key}
+            </span>
+            <span className="font-medium">
+              {typeof value === "string" && value.includes("T")
+                ? formatDate(value)
+                : String(value ?? "-")}
+            </span>
+          </div>
+        ))}
+      </div>
+    );
+  };
+
   if (!currentProject) {
     return <div className="text-muted-foreground">请先选择一个项目</div>;
   }
@@ -245,7 +325,14 @@ export default function AgentsPage() {
             管理已连接的 AI Agent ({agents.length} 个)
           </p>
         </div>
-        <Dialog open={showDialog} onOpenChange={setShowDialog}>
+        <Dialog open={showDialog} onOpenChange={(open) => {
+          setShowDialog(open);
+          if (!open) {
+            setName("");
+            setAgentId("");
+            setAgentIdTouched(false);
+          }
+        }}>
           <DialogTrigger asChild>
             <Button size="sm">
               <Plus className="mr-2 h-4 w-4" />
@@ -269,10 +356,22 @@ export default function AgentsPage() {
               <div className="space-y-2">
                 <Label>Agent ID</Label>
                 <Input
-                  placeholder="唯一标识符"
+                  placeholder="唯一标识符，如: my-claude-agent"
                   value={agentId}
-                  onChange={(e) => setAgentId(e.target.value)}
+                  onChange={(e) => {
+                    setAgentId(e.target.value);
+                    setAgentIdTouched(true);
+                  }}
+                  className={agentId && !agentIdValid ? "border-destructive" : ""}
                 />
+                <p className="text-xs text-muted-foreground">
+                  仅允许字母、数字、下划线和连字符，1-64 字符
+                </p>
+                {agentId && !agentIdValid && (
+                  <p className="text-xs text-destructive">
+                    Agent ID 格式无效：仅允许字母、数字、下划线（_）和连字符（-）
+                  </p>
+                )}
               </div>
               <div className="space-y-2">
                 <Label>类型</Label>
@@ -294,7 +393,7 @@ export default function AgentsPage() {
               </Button>
               <Button
                 onClick={handleCreate}
-                disabled={creating || !name || !agentId}
+                disabled={!canCreate}
               >
                 {creating ? "创建中..." : "创建"}
               </Button>
@@ -314,9 +413,7 @@ export default function AgentsPage() {
           </div>
         ) : (
           agents.map((agent) => {
-            const stats = agentStatsMap[agent.id] || {};
-            const memoryCount = stats.memory_count ?? stats.total_memories ?? 0;
-            const lastActive = stats.last_active || stats.last_activity || null;
+            const stats = agentStatsMap[agent.id] ?? null;
             const isExpanded = expandedAgentId === agent.id;
 
             return (
@@ -352,18 +449,7 @@ export default function AgentsPage() {
                     </div>
 
                     {/* Agent 统计摘要 */}
-                    <div className="flex items-center gap-4 text-xs text-muted-foreground">
-                      <div className="flex items-center gap-1">
-                        <Brain className="h-3 w-3" />
-                        <span>{memoryCount} 条记忆</span>
-                      </div>
-                      {lastActive && (
-                        <div className="flex items-center gap-1">
-                          <Clock className="h-3 w-3" />
-                          <span>最后活跃: {formatDate(lastActive)}</span>
-                        </div>
-                      )}
-                    </div>
+                    {renderStatsSummary(stats)}
 
                     {/* 操作按钮 */}
                     <div className="mt-3 flex gap-2">
@@ -410,33 +496,7 @@ export default function AgentsPage() {
                               <Activity className="h-4 w-4" />
                               统计信息
                             </h3>
-                            {detailStats ? (
-                              <div className="space-y-3">
-                                {Object.entries(detailStats).map(([key, value]) => (
-                                  <div
-                                    key={key}
-                                    className="flex justify-between items-center text-sm"
-                                  >
-                                    <span className="text-muted-foreground">
-                                      {key === "memory_count" || key === "total_memories"
-                                        ? "记忆总数"
-                                        : key === "last_active" || key === "last_activity"
-                                        ? "最后活跃"
-                                        : key}
-                                    </span>
-                                    <span className="font-medium">
-                                      {typeof value === "string" && value.includes("T")
-                                        ? formatDate(value)
-                                        : String(value ?? "-")}
-                                    </span>
-                                  </div>
-                                ))}
-                              </div>
-                            ) : (
-                              <p className="text-sm text-muted-foreground">
-                                暂无统计数据
-                              </p>
-                            )}
+                            {renderDetailStats()}
                           </div>
 
                           {/* 记忆列表 */}
@@ -499,35 +559,57 @@ export default function AgentsPage() {
           </DialogHeader>
 
           {guideAgent && (
-            <Tabs defaultValue="mcp" className="w-full">
-              <TabsList className="grid w-full grid-cols-3">
-                <TabsTrigger value="mcp">
-                  <Code className="mr-1 h-3 w-3" />
-                  MCP
-                </TabsTrigger>
-                <TabsTrigger value="rest">
-                  <Code className="mr-1 h-3 w-3" />
-                  REST API
-                </TabsTrigger>
-                <TabsTrigger value="webhook">
-                  <Webhook className="mr-1 h-3 w-3" />
-                  Webhook
-                </TabsTrigger>
-              </TabsList>
+            <>
+              {/* 前置条件提示 */}
+              <div className="rounded-md border border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/30 p-4">
+                <div className="flex items-start gap-3">
+                  <Key className="h-5 w-5 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
+                  <div>
+                    <h4 className="text-sm font-semibold text-amber-800 dark:text-amber-200">
+                      前置条件：获取 API Key
+                    </h4>
+                    <p className="text-xs text-amber-700 dark:text-amber-300 mt-1">
+                      使用 REST API 或 Webhook 方式接入前，需要先创建 API Key 用于身份验证。
+                    </p>
+                    <ol className="text-xs text-amber-700 dark:text-amber-300 mt-2 list-decimal list-inside space-y-1">
+                      <li>进入左侧菜单「设置 &rarr; API Key」页面</li>
+                      <li>点击「创建 API Key」，填写名称并选择权限范围</li>
+                      <li>创建成功后，复制 API Key（仅显示一次，请妥善保存）</li>
+                      <li>在下方示例代码中将 <code className="px-1 py-0.5 bg-amber-100 dark:bg-amber-900 rounded text-[11px]">YOUR_API_KEY</code> 替换为实际值</li>
+                    </ol>
+                  </div>
+                </div>
+              </div>
 
-              {/* MCP 接入 */}
-              <TabsContent value="mcp" className="space-y-4">
-                <div className="space-y-3">
-                  <h4 className="text-sm font-semibold">1. Claude Desktop 配置</h4>
-                  <p className="text-sm text-muted-foreground">
-                    将以下配置添加到 Claude Desktop 的配置文件
-                    <code className="mx-1 px-1 py-0.5 bg-muted rounded text-xs">
-                      claude_desktop_config.json
-                    </code>
-                    中:
-                  </p>
-                  <div className="relative">
-                    <pre className="rounded-md border bg-muted/50 p-4 text-xs overflow-auto">
+              <Tabs defaultValue="mcp" className="w-full">
+                <TabsList className="grid w-full grid-cols-3">
+                  <TabsTrigger value="mcp">
+                    <Code className="mr-1 h-3 w-3" />
+                    MCP
+                  </TabsTrigger>
+                  <TabsTrigger value="rest">
+                    <Code className="mr-1 h-3 w-3" />
+                    REST API
+                  </TabsTrigger>
+                  <TabsTrigger value="webhook">
+                    <Webhook className="mr-1 h-3 w-3" />
+                    Webhook
+                  </TabsTrigger>
+                </TabsList>
+
+                {/* MCP 接入 */}
+                <TabsContent value="mcp" className="space-y-4">
+                  <div className="space-y-3">
+                    <h4 className="text-sm font-semibold">1. Claude Desktop 配置</h4>
+                    <p className="text-sm text-muted-foreground">
+                      将以下配置添加到 Claude Desktop 的配置文件
+                      <code className="mx-1 px-1 py-0.5 bg-muted rounded text-xs">
+                        claude_desktop_config.json
+                      </code>
+                      中:
+                    </p>
+                    <div className="relative">
+                      <pre className="rounded-md border bg-muted/50 p-4 text-xs overflow-auto">
 {`{
   "mcpServers": {
     "memvault": {
@@ -535,73 +617,73 @@ export default function AgentsPage() {
     }
   }
 }`}
-                    </pre>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="absolute top-2 right-2 h-6 w-6"
-                      onClick={() =>
-                        copyToClipboard(
-                          JSON.stringify(
-                            {
-                              mcpServers: {
-                                memvault: {
-                                  url: `${getApiBaseUrl()}/mcp/sse?project_id=${currentProject.id}&agent_id=${guideAgent.agent_id}`,
+                      </pre>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="absolute top-2 right-2 h-6 w-6"
+                        onClick={() =>
+                          copyToClipboard(
+                            JSON.stringify(
+                              {
+                                mcpServers: {
+                                  memvault: {
+                                    url: `${getApiBaseUrl()}/mcp/sse?project_id=${currentProject.id}&agent_id=${guideAgent.agent_id}`,
+                                  },
                                 },
                               },
-                            },
-                            null,
-                            2
-                          ),
-                          "mcp-config"
-                        )
-                      }
-                    >
-                      {copiedField === "mcp-config" ? (
-                        <Check className="h-3 w-3 text-green-500" />
-                      ) : (
-                        <Copy className="h-3 w-3" />
-                      )}
-                    </Button>
-                  </div>
+                              null,
+                              2
+                            ),
+                            "mcp-config"
+                          )
+                        }
+                      >
+                        {copiedField === "mcp-config" ? (
+                          <Check className="h-3 w-3 text-green-500" />
+                        ) : (
+                          <Copy className="h-3 w-3" />
+                        )}
+                      </Button>
+                    </div>
 
-                  <h4 className="text-sm font-semibold mt-4">2. SSE 端点</h4>
-                  <div className="relative">
-                    <pre className="rounded-md border bg-muted/50 p-4 text-xs overflow-auto">
+                    <h4 className="text-sm font-semibold mt-4">2. SSE 端点</h4>
+                    <div className="relative">
+                      <pre className="rounded-md border bg-muted/50 p-4 text-xs overflow-auto">
 {`${getApiBaseUrl()}/mcp/sse?project_id=${currentProject.id}&agent_id=${guideAgent.agent_id}`}
-                    </pre>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="absolute top-2 right-2 h-6 w-6"
-                      onClick={() =>
-                        copyToClipboard(
-                          `${getApiBaseUrl()}/mcp/sse?project_id=${currentProject.id}&agent_id=${guideAgent.agent_id}`,
-                          "mcp-sse"
-                        )
-                      }
-                    >
-                      {copiedField === "mcp-sse" ? (
-                        <Check className="h-3 w-3 text-green-500" />
-                      ) : (
-                        <Copy className="h-3 w-3" />
-                      )}
-                    </Button>
-                  </div>
+                      </pre>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="absolute top-2 right-2 h-6 w-6"
+                        onClick={() =>
+                          copyToClipboard(
+                            `${getApiBaseUrl()}/mcp/sse?project_id=${currentProject.id}&agent_id=${guideAgent.agent_id}`,
+                            "mcp-sse"
+                          )
+                        }
+                      >
+                        {copiedField === "mcp-sse" ? (
+                          <Check className="h-3 w-3 text-green-500" />
+                        ) : (
+                          <Copy className="h-3 w-3" />
+                        )}
+                      </Button>
+                    </div>
 
-                  <div className="rounded-md bg-blue-50 dark:bg-blue-950/30 p-3 text-xs text-blue-700 dark:text-blue-300">
-                    <strong>提示:</strong> MCP (Model Context Protocol) 允许 AI Agent 通过标准化协议直接访问 MemVault 的记忆存储和检索能力。
-                    配置后，Agent 可以自动读取和写入记忆。
+                    <div className="rounded-md bg-blue-50 dark:bg-blue-950/30 p-3 text-xs text-blue-700 dark:text-blue-300">
+                      <strong>提示:</strong> MCP (Model Context Protocol) 允许 AI Agent 通过标准化协议直接访问 MemVault 的记忆存储和检索能力。
+                      配置后，Agent 可以自动读取和写入记忆。MCP 方式无需 API Key。
+                    </div>
                   </div>
-                </div>
-              </TabsContent>
+                </TabsContent>
 
-              {/* REST API 接入 */}
-              <TabsContent value="rest" className="space-y-4">
-                <div className="space-y-3">
-                  <h4 className="text-sm font-semibold">1. 添加记忆</h4>
-                  <div className="relative">
-                    <pre className="rounded-md border bg-muted/50 p-4 text-xs overflow-auto">
+                {/* REST API 接入 */}
+                <TabsContent value="rest" className="space-y-4">
+                  <div className="space-y-3">
+                    <h4 className="text-sm font-semibold">1. 添加记忆</h4>
+                    <div className="relative">
+                      <pre className="rounded-md border bg-muted/50 p-4 text-xs overflow-auto">
 {`curl -X POST "${getApiBaseUrl()}/api/v1/memories?project_id=${currentProject.id}" \\
   -H "Authorization: Bearer YOUR_API_KEY" \\
   -H "Content-Type: application/json" \\
@@ -613,29 +695,29 @@ export default function AgentsPage() {
     "agent_id": "${guideAgent.agent_id}",
     "user_id": "user-123"
   }'`}
-                    </pre>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="absolute top-2 right-2 h-6 w-6"
-                      onClick={() =>
-                        copyToClipboard(
-                          `curl -X POST "${getApiBaseUrl()}/api/v1/memories?project_id=${currentProject.id}" \\\n  -H "Authorization: Bearer YOUR_API_KEY" \\\n  -H "Content-Type: application/json" \\\n  -d '{\n    "messages": [\n      {"role": "user", "content": "用户消息"},\n      {"role": "assistant", "content": "助手回复"}\n    ],\n    "agent_id": "${guideAgent.agent_id}",\n    "user_id": "user-123"\n  }'`,
-                          "rest-add"
-                        )
-                      }
-                    >
-                      {copiedField === "rest-add" ? (
-                        <Check className="h-3 w-3 text-green-500" />
-                      ) : (
-                        <Copy className="h-3 w-3" />
-                      )}
-                    </Button>
-                  </div>
+                      </pre>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="absolute top-2 right-2 h-6 w-6"
+                        onClick={() =>
+                          copyToClipboard(
+                            `curl -X POST "${getApiBaseUrl()}/api/v1/memories?project_id=${currentProject.id}" \\\n  -H "Authorization: Bearer YOUR_API_KEY" \\\n  -H "Content-Type: application/json" \\\n  -d '{\n    "messages": [\n      {"role": "user", "content": "用户消息"},\n      {"role": "assistant", "content": "助手回复"}\n    ],\n    "agent_id": "${guideAgent.agent_id}",\n    "user_id": "user-123"\n  }'`,
+                            "rest-add"
+                          )
+                        }
+                      >
+                        {copiedField === "rest-add" ? (
+                          <Check className="h-3 w-3 text-green-500" />
+                        ) : (
+                          <Copy className="h-3 w-3" />
+                        )}
+                      </Button>
+                    </div>
 
-                  <h4 className="text-sm font-semibold">2. 搜索记忆</h4>
-                  <div className="relative">
-                    <pre className="rounded-md border bg-muted/50 p-4 text-xs overflow-auto">
+                    <h4 className="text-sm font-semibold">2. 搜索记忆</h4>
+                    <div className="relative">
+                      <pre className="rounded-md border bg-muted/50 p-4 text-xs overflow-auto">
 {`curl -X POST "${getApiBaseUrl()}/api/v1/memories/search?project_id=${currentProject.id}" \\
   -H "Authorization: Bearer YOUR_API_KEY" \\
   -H "Content-Type: application/json" \\
@@ -644,69 +726,69 @@ export default function AgentsPage() {
     "agent_id": "${guideAgent.agent_id}",
     "limit": 10
   }'`}
-                    </pre>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="absolute top-2 right-2 h-6 w-6"
-                      onClick={() =>
-                        copyToClipboard(
-                          `curl -X POST "${getApiBaseUrl()}/api/v1/memories/search?project_id=${currentProject.id}" \\\n  -H "Authorization: Bearer YOUR_API_KEY" \\\n  -H "Content-Type: application/json" \\\n  -d '{\n    "query": "搜索关键词",\n    "agent_id": "${guideAgent.agent_id}",\n    "limit": 10\n  }'`,
-                          "rest-search"
-                        )
-                      }
-                    >
-                      {copiedField === "rest-search" ? (
-                        <Check className="h-3 w-3 text-green-500" />
-                      ) : (
-                        <Copy className="h-3 w-3" />
-                      )}
-                    </Button>
-                  </div>
+                      </pre>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="absolute top-2 right-2 h-6 w-6"
+                        onClick={() =>
+                          copyToClipboard(
+                            `curl -X POST "${getApiBaseUrl()}/api/v1/memories/search?project_id=${currentProject.id}" \\\n  -H "Authorization: Bearer YOUR_API_KEY" \\\n  -H "Content-Type: application/json" \\\n  -d '{\n    "query": "搜索关键词",\n    "agent_id": "${guideAgent.agent_id}",\n    "limit": 10\n  }'`,
+                            "rest-search"
+                          )
+                        }
+                      >
+                        {copiedField === "rest-search" ? (
+                          <Check className="h-3 w-3 text-green-500" />
+                        ) : (
+                          <Copy className="h-3 w-3" />
+                        )}
+                      </Button>
+                    </div>
 
-                  <h4 className="text-sm font-semibold">3. 获取全部记忆</h4>
-                  <div className="relative">
-                    <pre className="rounded-md border bg-muted/50 p-4 text-xs overflow-auto">
+                    <h4 className="text-sm font-semibold">3. 获取全部记忆</h4>
+                    <div className="relative">
+                      <pre className="rounded-md border bg-muted/50 p-4 text-xs overflow-auto">
 {`curl "${getApiBaseUrl()}/api/v1/memories?project_id=${currentProject.id}&agent_id=${guideAgent.agent_id}" \\
   -H "Authorization: Bearer YOUR_API_KEY"`}
-                    </pre>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="absolute top-2 right-2 h-6 w-6"
-                      onClick={() =>
-                        copyToClipboard(
-                          `curl "${getApiBaseUrl()}/api/v1/memories?project_id=${currentProject.id}&agent_id=${guideAgent.agent_id}" \\\n  -H "Authorization: Bearer YOUR_API_KEY"`,
-                          "rest-list"
-                        )
-                      }
-                    >
-                      {copiedField === "rest-list" ? (
-                        <Check className="h-3 w-3 text-green-500" />
-                      ) : (
-                        <Copy className="h-3 w-3" />
-                      )}
-                    </Button>
+                      </pre>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="absolute top-2 right-2 h-6 w-6"
+                        onClick={() =>
+                          copyToClipboard(
+                            `curl "${getApiBaseUrl()}/api/v1/memories?project_id=${currentProject.id}&agent_id=${guideAgent.agent_id}" \\\n  -H "Authorization: Bearer YOUR_API_KEY"`,
+                            "rest-list"
+                          )
+                        }
+                      >
+                        {copiedField === "rest-list" ? (
+                          <Check className="h-3 w-3 text-green-500" />
+                        ) : (
+                          <Copy className="h-3 w-3" />
+                        )}
+                      </Button>
+                    </div>
+
+                    <div className="rounded-md bg-amber-50 dark:bg-amber-950/30 p-3 text-xs text-amber-700 dark:text-amber-300">
+                      <strong>注意:</strong> 请将 <code>YOUR_API_KEY</code> 替换为在「设置 &rarr; API Key」页面中创建的 API Key。
+                      API Key 拥有与创建者相同的项目访问权限。
+                    </div>
                   </div>
+                </TabsContent>
 
-                  <div className="rounded-md bg-amber-50 dark:bg-amber-950/30 p-3 text-xs text-amber-700 dark:text-amber-300">
-                    <strong>注意:</strong> 请将 <code>YOUR_API_KEY</code> 替换为在"设置"页面中创建的 API Key。
-                    API Key 拥有与创建者相同的项目访问权限。
-                  </div>
-                </div>
-              </TabsContent>
+                {/* Webhook 接入 */}
+                <TabsContent value="webhook" className="space-y-4">
+                  <div className="space-y-3">
+                    <h4 className="text-sm font-semibold">Webhook 回调配置</h4>
+                    <p className="text-sm text-muted-foreground">
+                      Webhook 允许 MemVault 在记忆发生变更时主动推送通知到你指定的 URL。
+                    </p>
 
-              {/* Webhook 接入 */}
-              <TabsContent value="webhook" className="space-y-4">
-                <div className="space-y-3">
-                  <h4 className="text-sm font-semibold">Webhook 回调配置</h4>
-                  <p className="text-sm text-muted-foreground">
-                    Webhook 允许 MemVault 在记忆发生变更时主动推送通知到你指定的 URL。
-                  </p>
-
-                  <h4 className="text-sm font-semibold mt-4">1. 注册 Webhook</h4>
-                  <div className="relative">
-                    <pre className="rounded-md border bg-muted/50 p-4 text-xs overflow-auto">
+                    <h4 className="text-sm font-semibold mt-4">1. 注册 Webhook</h4>
+                    <div className="relative">
+                      <pre className="rounded-md border bg-muted/50 p-4 text-xs overflow-auto">
 {`curl -X POST "${getApiBaseUrl()}/api/v1/webhooks?project_id=${currentProject.id}" \\
   -H "Authorization: Bearer YOUR_API_KEY" \\
   -H "Content-Type: application/json" \\
@@ -714,31 +796,31 @@ export default function AgentsPage() {
     "url": "https://your-server.com/webhook/memvault",
     "events": ["memory.created", "memory.updated", "memory.deleted"]
   }'`}
-                    </pre>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="absolute top-2 right-2 h-6 w-6"
-                      onClick={() =>
-                        copyToClipboard(
-                          `curl -X POST "${getApiBaseUrl()}/api/v1/webhooks?project_id=${currentProject.id}" \\\n  -H "Authorization: Bearer YOUR_API_KEY" \\\n  -H "Content-Type: application/json" \\\n  -d '{\n    "url": "https://your-server.com/webhook/memvault",\n    "events": ["memory.created", "memory.updated", "memory.deleted"]\n  }'`,
-                          "webhook-register"
-                        )
-                      }
-                    >
-                      {copiedField === "webhook-register" ? (
-                        <Check className="h-3 w-3 text-green-500" />
-                      ) : (
-                        <Copy className="h-3 w-3" />
-                      )}
-                    </Button>
-                  </div>
+                      </pre>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="absolute top-2 right-2 h-6 w-6"
+                        onClick={() =>
+                          copyToClipboard(
+                            `curl -X POST "${getApiBaseUrl()}/api/v1/webhooks?project_id=${currentProject.id}" \\\n  -H "Authorization: Bearer YOUR_API_KEY" \\\n  -H "Content-Type: application/json" \\\n  -d '{\n    "url": "https://your-server.com/webhook/memvault",\n    "events": ["memory.created", "memory.updated", "memory.deleted"]\n  }'`,
+                            "webhook-register"
+                          )
+                        }
+                      >
+                        {copiedField === "webhook-register" ? (
+                          <Check className="h-3 w-3 text-green-500" />
+                        ) : (
+                          <Copy className="h-3 w-3" />
+                        )}
+                      </Button>
+                    </div>
 
-                  <h4 className="text-sm font-semibold mt-4">2. Webhook 载荷格式</h4>
-                  <p className="text-sm text-muted-foreground">
-                    当事件触发时，MemVault 会向你配置的 URL 发送 POST 请求，载荷格式如下:
-                  </p>
-                  <pre className="rounded-md border bg-muted/50 p-4 text-xs overflow-auto">
+                    <h4 className="text-sm font-semibold mt-4">2. Webhook 载荷格式</h4>
+                    <p className="text-sm text-muted-foreground">
+                      当事件触发时，MemVault 会向你配置的 URL 发送 POST 请求，载荷格式如下:
+                    </p>
+                    <pre className="rounded-md border bg-muted/50 p-4 text-xs overflow-auto">
 {`{
   "event": "memory.created",
   "timestamp": "2026-02-15T10:00:00Z",
@@ -751,31 +833,32 @@ export default function AgentsPage() {
     "memory_type": "semantic"
   }
 }`}
-                  </pre>
+                    </pre>
 
-                  <h4 className="text-sm font-semibold mt-4">3. 支持的事件类型</h4>
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                    <div className="rounded-md border p-2">
-                      <Badge variant="secondary" className="text-xs">memory.created</Badge>
-                      <p className="text-xs text-muted-foreground mt-1">新记忆创建时触发</p>
+                    <h4 className="text-sm font-semibold mt-4">3. 支持的事件类型</h4>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                      <div className="rounded-md border p-2">
+                        <Badge variant="secondary" className="text-xs">memory.created</Badge>
+                        <p className="text-xs text-muted-foreground mt-1">新记忆创建时触发</p>
+                      </div>
+                      <div className="rounded-md border p-2">
+                        <Badge variant="secondary" className="text-xs">memory.updated</Badge>
+                        <p className="text-xs text-muted-foreground mt-1">记忆内容更新时触发</p>
+                      </div>
+                      <div className="rounded-md border p-2">
+                        <Badge variant="secondary" className="text-xs">memory.deleted</Badge>
+                        <p className="text-xs text-muted-foreground mt-1">记忆被删除时触发</p>
+                      </div>
                     </div>
-                    <div className="rounded-md border p-2">
-                      <Badge variant="secondary" className="text-xs">memory.updated</Badge>
-                      <p className="text-xs text-muted-foreground mt-1">记忆内容更新时触发</p>
-                    </div>
-                    <div className="rounded-md border p-2">
-                      <Badge variant="secondary" className="text-xs">memory.deleted</Badge>
-                      <p className="text-xs text-muted-foreground mt-1">记忆被删除时触发</p>
+
+                    <div className="rounded-md bg-green-50 dark:bg-green-950/30 p-3 text-xs text-green-700 dark:text-green-300">
+                      <strong>提示:</strong> 你可以在「Webhook」管理页面中创建和管理 Webhook，
+                      也可以使用测试功能验证你的回调端点是否正常工作。
                     </div>
                   </div>
-
-                  <div className="rounded-md bg-green-50 dark:bg-green-950/30 p-3 text-xs text-green-700 dark:text-green-300">
-                    <strong>提示:</strong> 你可以在"Webhook"管理页面中创建和管理 Webhook，
-                    也可以使用测试功能验证你的回调端点是否正常工作。
-                  </div>
-                </div>
-              </TabsContent>
-            </Tabs>
+                </TabsContent>
+              </Tabs>
+            </>
           )}
 
           <DialogFooter>

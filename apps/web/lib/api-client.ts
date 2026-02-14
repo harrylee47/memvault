@@ -95,6 +95,20 @@ class ApiClient {
     return this.request<any[]>("/api/v1/organizations");
   }
 
+  async createOrganization(data: { name: string; slug: string }) {
+    return this.request<any>("/api/v1/organizations", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  }
+
+  async updateOrganization(orgId: string, data: { name?: string }) {
+    return this.request<any>(`/api/v1/organizations/${orgId}`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    });
+  }
+
   async deleteOrganization(orgId: string) {
     return this.request<void>(`/api/v1/organizations/${orgId}`, {
       method: "DELETE",
@@ -140,6 +154,19 @@ class ApiClient {
     return this.request<any>(`/api/v1/projects?org_id=${orgId}`, {
       method: "POST",
       body: JSON.stringify(data),
+    });
+  }
+
+  async updateProject(projectId: string, data: { name?: string; description?: string }) {
+    return this.request<any>(`/api/v1/projects/${projectId}`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deleteProject(projectId: string) {
+    return this.request<void>(`/api/v1/projects/${projectId}`, {
+      method: "DELETE",
     });
   }
 
