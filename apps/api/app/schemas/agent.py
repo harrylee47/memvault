@@ -7,7 +7,7 @@ from datetime import datetime
 class AgentCreate(BaseModel):
     name: str
     description: str | None = None
-    agent_type: Literal["api", "mcp", "webhook"] = "api"
+    agent_type: Literal["api", "mcp", "webhook", "openclaw"] = "api"
     agent_id: str
 
     @field_validator("name")

@@ -383,6 +383,7 @@ export default function AgentsPage() {
                     <SelectItem value="api">REST API</SelectItem>
                     <SelectItem value="mcp">MCP</SelectItem>
                     <SelectItem value="webhook">Webhook</SelectItem>
+                    <SelectItem value="openclaw">OpenClaw</SelectItem>
                   </SelectContent>
                 </Select>
               </div>

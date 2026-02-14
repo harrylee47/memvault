@@ -13,19 +13,75 @@ import { toast } from "@/components/ui/toaster";
 import { Save } from "lucide-react";
 
 const LLM_MODELS: Record<string, string[]> = {
-  openai: ["gpt-4o", "gpt-4o-mini", "gpt-4-turbo", "gpt-4.1", "gpt-4.1-mini", "gpt-4.1-nano", "o3-mini"],
-  anthropic: ["claude-sonnet-4-5-20250929", "claude-haiku-4-5-20251001", "claude-opus-4-6"],
-  gemini: ["gemini-2.0-flash", "gemini-2.0-flash-lite", "gemini-1.5-pro", "gemini-1.5-flash"],
-  together: ["meta-llama/Llama-3.3-70B-Instruct-Turbo", "meta-llama/Llama-3.1-8B-Instruct-Turbo", "mistralai/Mixtral-8x7B-Instruct-v0.1", "Qwen/Qwen2.5-72B-Instruct-Turbo"],
-  groq: ["llama-3.3-70b-versatile", "llama-3.1-8b-instant", "mixtral-8x7b-32768", "gemma2-9b-it"],
-  ollama: ["llama3.2", "llama3.1", "mistral", "phi3", "qwen2.5", "gemma2"],
+  openai: [
+    "gpt-5.2", "gpt-5", "gpt-5-mini", "gpt-5-nano",
+    "gpt-4.1", "gpt-4.1-mini", "gpt-4.1-nano",
+    "gpt-4o", "gpt-4o-mini",
+    "o3", "o3-mini", "o4-mini", "o1", "o1-mini",
+  ],
+  anthropic: [
+    "claude-opus-4-6",
+    "claude-sonnet-4-5-20250929",
+    "claude-haiku-4-5-20251001",
+  ],
+  gemini: [
+    "gemini-3-pro-preview", "gemini-3-flash-preview",
+    "gemini-2.5-pro", "gemini-2.5-flash", "gemini-2.5-flash-lite",
+  ],
+  together: [
+    "meta-llama/Llama-3.3-70B-Instruct-Turbo",
+    "deepseek-ai/DeepSeek-R1",
+    "deepseek-ai/DeepSeek-V3",
+    "Qwen/Qwen-2.5-72B",
+    "Qwen/QwQ-32B",
+    "Qwen/Qwen-2.5-Coder-32B",
+    "mistralai/Mistral-Small-3",
+    "google/Gemma-3-27B",
+  ],
+  groq: [
+    "llama-3.3-70b-versatile",
+    "llama-3.1-8b-instant",
+    "meta-llama/llama-4-maverick-17b-128e-instruct",
+    "meta-llama/llama-4-scout-17b-16e-instruct",
+    "qwen/qwen3-32b",
+    "deepseek-r1-distill-llama-70b",
+  ],
+  ollama: [
+    "llama3.3", "llama3.2", "llama3.1",
+    "qwen3", "qwen2.5",
+    "deepseek-r1", "deepseek-v3",
+    "gemma3", "mistral", "mistral-large",
+    "phi4",
+  ],
 };
 
 const EMBEDDER_MODELS: Record<string, string[]> = {
-  openai: ["text-embedding-3-small", "text-embedding-3-large", "text-embedding-ada-002"],
-  gemini: ["text-embedding-004", "embedding-001"],
-  huggingface: ["sentence-transformers/all-MiniLM-L6-v2", "BAAI/bge-large-en-v1.5", "BAAI/bge-m3"],
-  ollama: ["nomic-embed-text", "mxbai-embed-large", "all-minilm"],
+  openai: [
+    "text-embedding-3-large",
+    "text-embedding-3-small",
+    "text-embedding-ada-002",
+  ],
+  gemini: [
+    "gemini-embedding-001",
+    "text-embedding-005",
+    "text-embedding-004",
+  ],
+  huggingface: [
+    "BAAI/bge-m3",
+    "BAAI/bge-large-en-v1.5",
+    "BAAI/bge-base-en-v1.5",
+    "sentence-transformers/all-MiniLM-L6-v2",
+    "sentence-transformers/all-mpnet-base-v2",
+    "intfloat/multilingual-e5-large",
+  ],
+  ollama: [
+    "nomic-embed-text",
+    "mxbai-embed-large",
+    "bge-m3",
+    "bge-large",
+    "snowflake-arctic-embed",
+    "all-minilm",
+  ],
 };
 
 const DEFAULT_API_BASE: Record<string, string> = {

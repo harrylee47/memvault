@@ -10,7 +10,6 @@ from app.models.user import User
 from app.schemas.organization import (
     OrgCreate, OrgUpdate, OrgResponse, OrgMemberResponse, OrgMemberAdd,
 )
-from app.middleware.audit import log_audit
 
 router = APIRouter(prefix="/organizations", tags=["组织"])
 
@@ -140,7 +139,7 @@ async def list_members(
         OrgMemberResponse(
             id=member.id,
             user_id=member.user_id,
-            role=member.role,
+            role=member.role.value if isinstance(member.role, OrgRole) else str(member.role).lower(),
             user_name=user.name,
             user_email=user.email,
             created_at=member.created_at,
@@ -180,22 +179,24 @@ async def add_member(
     if existing.scalar_one_or_none():
         raise HTTPException(status_code=409, detail="User is already a member")
 
+    try:
+        member_role = OrgRole(data.role) if data.role else OrgRole.MEMBER
+    except ValueError:
+        member_role = OrgRole.MEMBER
     member = OrgMember(
         id=str(uuid.uuid4()),
         org_id=org_id,
         user_id=user.id,
-        role=data.role or OrgRole.MEMBER,
+        role=member_role,
     )
     db.add(member)
     await db.flush()
-    await log_audit(db, org_id, auth.user_id, "add_member", "organization", user.id,
-                    details={"email": data.email, "role": member.role})
     return {
         "id": member.id,
         "user_id": user.id,
         "user_name": user.name,
         "user_email": user.email,
-        "role": member.role,
+        "role": member_role.value,
     }
 
 
@@ -203,11 +204,13 @@ async def add_member(
 async def update_member_role(
     org_id: str,
     member_id: str,
-    role: str,
+    data: dict,
     auth: AuthContext = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """更新成员角色"""
+    role = data.get("role", "")
+
     # 验证操作者权限
     admin_check = await db.execute(
         select(OrgMember).where(
@@ -235,13 +238,14 @@ async def update_member_role(
         if not my_result.scalar_one_or_none():
             raise HTTPException(status_code=403, detail="Cannot modify owner role")
 
-    if role not in [r.value for r in OrgRole]:
+    # 验证并转换角色枚举
+    try:
+        new_role = OrgRole(role)
+    except ValueError:
         raise HTTPException(status_code=400, detail=f"Invalid role: {role}")
 
-    member.role = role
-    await log_audit(db, org_id, auth.user_id, "update_member_role", "organization", member_id,
-                    details={"new_role": role})
-    return {"id": member.id, "role": member.role}
+    member.role = new_role
+    return {"id": member.id, "role": new_role.value}
 
 
 @router.delete("/{org_id}/members/{member_id}", status_code=204)
@@ -275,7 +279,6 @@ async def remove_member(
         raise HTTPException(status_code=400, detail="Cannot remove yourself. Use leave instead.")
 
     await db.delete(member)
-    await log_audit(db, org_id, auth.user_id, "remove_member", "organization", member_id)
 
 
 # ---- 计费 / 计划 ----

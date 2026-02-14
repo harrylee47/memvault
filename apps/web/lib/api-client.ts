@@ -131,8 +131,8 @@ class ApiClient {
 
   async updateMemberRole(orgId: string, memberId: string, role: string) {
     return this.request<any>(
-      `/api/v1/organizations/${orgId}/members/${memberId}?role=${encodeURIComponent(role)}`,
-      { method: "PUT" }
+      `/api/v1/organizations/${orgId}/members/${memberId}`,
+      { method: "PUT", body: JSON.stringify({ role }) }
     );
   }
 

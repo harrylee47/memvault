@@ -38,12 +38,14 @@ interface Member {
 }
 
 const ROLE_LABELS: Record<string, string> = {
+  owner: "所有者",
   admin: "管理员",
   member: "成员",
   viewer: "观察者",
 };
 
 const ROLE_VARIANTS: Record<string, "default" | "secondary" | "outline"> = {
+  owner: "default",
   admin: "default",
   member: "secondary",
   viewer: "outline",
@@ -214,33 +216,39 @@ export default function MembersPage() {
                     {member.user_email || "-"}
                   </div>
                   <div>
-                    <Select
-                      value={member.role}
-                      onValueChange={(value) => handleRoleChange(member.id, value)}
-                      disabled={updatingRoleId === member.id}
-                    >
-                      <SelectTrigger className="h-8 w-[130px]">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="admin">管理员</SelectItem>
-                        <SelectItem value="member">成员</SelectItem>
-                        <SelectItem value="viewer">观察者</SelectItem>
-                      </SelectContent>
-                    </Select>
+                    {member.role === "owner" ? (
+                      <Badge variant="default" className="text-xs">所有者</Badge>
+                    ) : (
+                      <Select
+                        value={member.role}
+                        onValueChange={(value) => handleRoleChange(member.id, value)}
+                        disabled={updatingRoleId === member.id}
+                      >
+                        <SelectTrigger className="h-8 w-[130px]">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="admin">管理员</SelectItem>
+                          <SelectItem value="member">成员</SelectItem>
+                          <SelectItem value="viewer">观察者</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    )}
                   </div>
                   <div className="text-sm text-muted-foreground">
                     {formatDate(member.created_at)}
                   </div>
                   <div>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => handleRemove(member)}
-                      title="移除成员"
-                    >
-                      <Trash2 className="h-4 w-4 text-destructive" />
-                    </Button>
+                    {member.role !== "owner" && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => handleRemove(member)}
+                        title="移除成员"
+                      >
+                        <Trash2 className="h-4 w-4 text-destructive" />
+                      </Button>
+                    )}
                   </div>
                 </div>
               ))}
