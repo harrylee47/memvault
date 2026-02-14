@@ -10,6 +10,7 @@ class AgentType(str, enum.Enum):
     MCP = "mcp"
     API = "api"
     WEBHOOK = "webhook"
+    OPENCLAW = "openclaw"
 
 
 class Agent(Base):

@@ -1,0 +1,79 @@
+{
+  "id": "memvault",
+  "name": "MemVault Memory",
+  "description": "Persistent cross-session memory for OpenClaw agents, powered by MemVault",
+  "kind": "memory",
+  "version": "1.0.0",
+  "configSchema": {
+    "type": "object",
+    "properties": {
+      "apiBaseUrl": {
+        "type": "string",
+        "description": "MemVault API base URL"
+      },
+      "apiKey": {
+        "type": "string",
+        "description": "MemVault API Key for authentication"
+      },
+      "projectId": {
+        "type": "string",
+        "description": "MemVault project ID"
+      },
+      "agentId": {
+        "type": "string",
+        "description": "Agent ID registered in MemVault"
+      },
+      "userId": {
+        "type": "string",
+        "description": "Default user ID for memory scoping"
+      },
+      "autoRecall": {
+        "type": "boolean",
+        "description": "Auto-inject relevant memories before each response",
+        "default": true
+      },
+      "autoCapture": {
+        "type": "boolean",
+        "description": "Auto-extract and store memories after each response",
+        "default": true
+      },
+      "topK": {
+        "type": "number",
+        "description": "Max number of memories to recall per turn",
+        "default": 5
+      }
+    },
+    "required": ["apiBaseUrl", "apiKey", "projectId", "agentId"]
+  },
+  "uiHints": {
+    "apiBaseUrl": {
+      "label": "API Base URL",
+      "placeholder": "http://localhost:8765"
+    },
+    "apiKey": {
+      "label": "API Key",
+      "sensitive": true
+    },
+    "projectId": {
+      "label": "Project ID",
+      "placeholder": "从 MemVault 项目设置中获取"
+    },
+    "agentId": {
+      "label": "Agent ID",
+      "placeholder": "在 MemVault 中注册的 Agent ID"
+    },
+    "userId": {
+      "label": "User ID",
+      "placeholder": "default"
+    },
+    "autoRecall": {
+      "label": "Auto Recall"
+    },
+    "autoCapture": {
+      "label": "Auto Capture"
+    },
+    "topK": {
+      "label": "Top K Results"
+    }
+  }
+}

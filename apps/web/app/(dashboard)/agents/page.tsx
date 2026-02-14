@@ -549,8 +549,8 @@ export default function AgentsPage() {
 
       {/* 接入引导 Dialog */}
       <Dialog open={showGuideDialog} onOpenChange={setShowGuideDialog}>
-        <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">
-          <DialogHeader>
+        <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col">
+          <DialogHeader className="flex-shrink-0">
             <DialogTitle>
               接入引导 - {guideAgent?.name}
             </DialogTitle>
@@ -560,12 +560,12 @@ export default function AgentsPage() {
           </DialogHeader>
 
           {guideAgent && (
-            <>
+            <div className="flex-1 overflow-y-auto min-h-0 space-y-4 pr-1">
               {/* 前置条件提示 */}
               <div className="rounded-md border border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/30 p-4">
                 <div className="flex items-start gap-3">
                   <Key className="h-5 w-5 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
-                  <div>
+                  <div className="min-w-0">
                     <h4 className="text-sm font-semibold text-amber-800 dark:text-amber-200">
                       前置条件：获取 API Key
                     </h4>
@@ -583,20 +583,26 @@ export default function AgentsPage() {
               </div>
 
               <Tabs defaultValue="mcp" className="w-full">
-                <TabsList className="grid w-full grid-cols-3">
-                  <TabsTrigger value="mcp">
-                    <Code className="mr-1 h-3 w-3" />
-                    MCP
-                  </TabsTrigger>
-                  <TabsTrigger value="rest">
-                    <Code className="mr-1 h-3 w-3" />
-                    REST API
-                  </TabsTrigger>
-                  <TabsTrigger value="webhook">
-                    <Webhook className="mr-1 h-3 w-3" />
-                    Webhook
-                  </TabsTrigger>
-                </TabsList>
+                <div className="overflow-x-auto -mx-1 px-1">
+                  <TabsList className="inline-flex w-auto min-w-full">
+                    <TabsTrigger value="mcp" className="flex-shrink-0">
+                      <Code className="mr-1 h-3 w-3" />
+                      MCP
+                    </TabsTrigger>
+                    <TabsTrigger value="rest" className="flex-shrink-0">
+                      <Code className="mr-1 h-3 w-3" />
+                      REST API
+                    </TabsTrigger>
+                    <TabsTrigger value="webhook" className="flex-shrink-0">
+                      <Webhook className="mr-1 h-3 w-3" />
+                      Webhook
+                    </TabsTrigger>
+                    <TabsTrigger value="openclaw" className="flex-shrink-0">
+                      <Bot className="mr-1 h-3 w-3" />
+                      OpenClaw
+                    </TabsTrigger>
+                  </TabsList>
+                </div>
 
                 {/* MCP 接入 */}
                 <TabsContent value="mcp" className="space-y-4">
@@ -610,7 +616,7 @@ export default function AgentsPage() {
                       中:
                     </p>
                     <div className="relative">
-                      <pre className="rounded-md border bg-muted/50 p-4 text-xs overflow-auto">
+                      <pre className="rounded-md border bg-muted/50 p-4 text-xs overflow-x-auto whitespace-pre">
 {`{
   "mcpServers": {
     "memvault": {
@@ -650,7 +656,7 @@ export default function AgentsPage() {
 
                     <h4 className="text-sm font-semibold mt-4">2. SSE 端点</h4>
                     <div className="relative">
-                      <pre className="rounded-md border bg-muted/50 p-4 text-xs overflow-auto">
+                      <pre className="rounded-md border bg-muted/50 p-4 text-xs overflow-x-auto whitespace-pre break-all">
 {`${getApiBaseUrl()}/mcp/sse?project_id=${currentProject.id}&agent_id=${guideAgent.agent_id}`}
                       </pre>
                       <Button
@@ -684,8 +690,9 @@ export default function AgentsPage() {
                   <div className="space-y-3">
                     <h4 className="text-sm font-semibold">1. 添加记忆</h4>
                     <div className="relative">
-                      <pre className="rounded-md border bg-muted/50 p-4 text-xs overflow-auto">
-{`curl -X POST "${getApiBaseUrl()}/api/v1/memories?project_id=${currentProject.id}" \\
+                      <pre className="rounded-md border bg-muted/50 p-4 text-xs overflow-x-auto whitespace-pre">
+{`curl -X POST "${getApiBaseUrl()}/api/v1/memories\\
+?project_id=${currentProject.id}" \\
   -H "Authorization: Bearer YOUR_API_KEY" \\
   -H "Content-Type: application/json" \\
   -d '{
@@ -718,8 +725,9 @@ export default function AgentsPage() {
 
                     <h4 className="text-sm font-semibold">2. 搜索记忆</h4>
                     <div className="relative">
-                      <pre className="rounded-md border bg-muted/50 p-4 text-xs overflow-auto">
-{`curl -X POST "${getApiBaseUrl()}/api/v1/memories/search?project_id=${currentProject.id}" \\
+                      <pre className="rounded-md border bg-muted/50 p-4 text-xs overflow-x-auto whitespace-pre">
+{`curl -X POST "${getApiBaseUrl()}/api/v1/memories/search\\
+?project_id=${currentProject.id}" \\
   -H "Authorization: Bearer YOUR_API_KEY" \\
   -H "Content-Type: application/json" \\
   -d '{
@@ -749,8 +757,10 @@ export default function AgentsPage() {
 
                     <h4 className="text-sm font-semibold">3. 获取全部记忆</h4>
                     <div className="relative">
-                      <pre className="rounded-md border bg-muted/50 p-4 text-xs overflow-auto">
-{`curl "${getApiBaseUrl()}/api/v1/memories?project_id=${currentProject.id}&agent_id=${guideAgent.agent_id}" \\
+                      <pre className="rounded-md border bg-muted/50 p-4 text-xs overflow-x-auto whitespace-pre">
+{`curl "${getApiBaseUrl()}/api/v1/memories\\
+?project_id=${currentProject.id}\\
+&agent_id=${guideAgent.agent_id}" \\
   -H "Authorization: Bearer YOUR_API_KEY"`}
                       </pre>
                       <Button
@@ -789,13 +799,15 @@ export default function AgentsPage() {
 
                     <h4 className="text-sm font-semibold mt-4">1. 注册 Webhook</h4>
                     <div className="relative">
-                      <pre className="rounded-md border bg-muted/50 p-4 text-xs overflow-auto">
-{`curl -X POST "${getApiBaseUrl()}/api/v1/webhooks?project_id=${currentProject.id}" \\
+                      <pre className="rounded-md border bg-muted/50 p-4 text-xs overflow-x-auto whitespace-pre">
+{`curl -X POST "${getApiBaseUrl()}/api/v1/webhooks\\
+?project_id=${currentProject.id}" \\
   -H "Authorization: Bearer YOUR_API_KEY" \\
   -H "Content-Type: application/json" \\
   -d '{
-    "url": "https://your-server.com/webhook/memvault",
-    "events": ["memory.created", "memory.updated", "memory.deleted"]
+    "url": "https://your-server.com/webhook",
+    "events": ["memory.created",
+      "memory.updated", "memory.deleted"]
   }'`}
                       </pre>
                       <Button
@@ -818,10 +830,7 @@ export default function AgentsPage() {
                     </div>
 
                     <h4 className="text-sm font-semibold mt-4">2. Webhook 载荷格式</h4>
-                    <p className="text-sm text-muted-foreground">
-                      当事件触发时，MemVault 会向你配置的 URL 发送 POST 请求，载荷格式如下:
-                    </p>
-                    <pre className="rounded-md border bg-muted/50 p-4 text-xs overflow-auto">
+                    <pre className="rounded-md border bg-muted/50 p-4 text-xs overflow-x-auto whitespace-pre">
 {`{
   "event": "memory.created",
   "timestamp": "2026-02-15T10:00:00Z",
@@ -851,18 +860,252 @@ export default function AgentsPage() {
                         <p className="text-xs text-muted-foreground mt-1">记忆被删除时触发</p>
                       </div>
                     </div>
+                  </div>
+                </TabsContent>
 
-                    <div className="rounded-md bg-green-50 dark:bg-green-950/30 p-3 text-xs text-green-700 dark:text-green-300">
-                      <strong>提示:</strong> 你可以在「Webhook」管理页面中创建和管理 Webhook，
-                      也可以使用测试功能验证你的回调端点是否正常工作。
+                {/* OpenClaw 接入 */}
+                <TabsContent value="openclaw" className="space-y-4">
+                  <div className="space-y-3">
+                    {/* 一键安装 Prompt */}
+                    <div className="rounded-md border border-green-200 bg-green-50 dark:border-green-800 dark:bg-green-950/30 p-4">
+                      <div className="flex items-start gap-3">
+                        <Bot className="h-5 w-5 text-green-600 dark:text-green-400 flex-shrink-0 mt-0.5" />
+                        <div className="min-w-0 flex-1">
+                          <h4 className="text-sm font-semibold text-green-800 dark:text-green-200">
+                            快速接入：复制 Prompt 发送给 OpenClaw
+                          </h4>
+                          <p className="text-xs text-green-700 dark:text-green-300 mt-1">
+                            将以下 Prompt 复制并发送给你的 OpenClaw Agent，它会自动完成插件安装和配置。
+                          </p>
+                          <div className="relative mt-3">
+                            <pre className="rounded-md border border-green-200 dark:border-green-800 bg-white dark:bg-green-950/50 p-3 text-xs overflow-x-auto whitespace-pre-wrap text-green-900 dark:text-green-100">
+{`请帮我安装并配置 MemVault 记忆插件。
+
+1. 运行以下命令安装插件：
+   openclaw plugins install @rigouu0407/openclaw-plugin
+
+2. 在 openclaw.json 的 plugins.entries 中添加以下配置：
+{
+  "memvault": {
+    "enabled": true,
+    "config": {
+      "apiBaseUrl": "${getApiBaseUrl()}",
+      "apiKey": "在此替换你的 API Key",
+      "projectId": "${currentProject?.id || ''}",
+      "agentId": "${guideAgent?.agent_id || ''}",
+      "userId": "default",
+      "autoRecall": true,
+      "autoCapture": true,
+      "topK": 5
+    }
+  }
+}
+
+安装完成后，请验证插件是否正常加载。`}
+                            </pre>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="absolute top-2 right-2 h-7 gap-1 text-green-700 hover:text-green-900 hover:bg-green-100 dark:text-green-300 dark:hover:bg-green-900"
+                              onClick={() =>
+                                copyToClipboard(
+                                  `请帮我安装并配置 MemVault 记忆插件。\n\n1. 运行以下命令安装插件：\n   openclaw plugins install @rigouu0407/openclaw-plugin\n\n2. 在 openclaw.json 的 plugins.entries 中添加以下配置：\n{\n  "memvault": {\n    "enabled": true,\n    "config": {\n      "apiBaseUrl": "${getApiBaseUrl()}",\n      "apiKey": "在此替换你的 API Key",\n      "projectId": "${currentProject?.id || ''}",\n      "agentId": "${guideAgent?.agent_id || ''}",\n      "userId": "default",\n      "autoRecall": true,\n      "autoCapture": true,\n      "topK": 5\n    }\n  }\n}\n\n安装完成后，请验证插件是否正常加载。`,
+                                  "oc-prompt"
+                                )
+                              }
+                            >
+                              {copiedField === "oc-prompt" ? (
+                                <><Check className="h-3 w-3" /> 已复制</>
+                              ) : (
+                                <><Copy className="h-3 w-3" /> 一键复制</>
+                              )}
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="relative flex items-center py-1">
+                      <div className="flex-grow border-t border-muted-foreground/20" />
+                      <span className="flex-shrink mx-3 text-xs text-muted-foreground">或手动安装</span>
+                      <div className="flex-grow border-t border-muted-foreground/20" />
+                    </div>
+
+                    <h4 className="text-sm font-semibold">1. 安装 MemVault 插件</h4>
+                    <p className="text-sm text-muted-foreground">
+                      安装 MemVault 自有的 OpenClaw 插件（直接对接你的 MemVault 实例，不依赖第三方）。
+                    </p>
+                    <div className="relative">
+                      <pre className="rounded-md border bg-muted/50 p-4 text-xs overflow-x-auto whitespace-pre">
+{`# 方式一：从 npm 安装
+openclaw plugins install @rigouu0407/openclaw-plugin
+
+# 方式二：从本站下载安装
+curl -O ${typeof window !== 'undefined' ? window.location.origin : ''}/plugins/openclaw-plugin.tgz
+openclaw plugins install -l ./openclaw-plugin.tgz`}
+                      </pre>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="absolute top-2 right-2 h-6 w-6"
+                        onClick={() =>
+                          copyToClipboard(
+                            "openclaw plugins install @rigouu0407/openclaw-plugin",
+                            "oc-install"
+                          )
+                        }
+                      >
+                        {copiedField === "oc-install" ? (
+                          <Check className="h-3 w-3 text-green-500" />
+                        ) : (
+                          <Copy className="h-3 w-3" />
+                        )}
+                      </Button>
+                    </div>
+
+                    <h4 className="text-sm font-semibold mt-4">2. 配置插件</h4>
+                    <p className="text-sm text-muted-foreground">
+                      在 <code className="mx-1 px-1 py-0.5 bg-muted rounded text-xs">openclaw.json</code> 的
+                      <code className="mx-1 px-1 py-0.5 bg-muted rounded text-xs">plugins.entries</code> 中添加：
+                    </p>
+                    <div className="relative">
+                      <pre className="rounded-md border bg-muted/50 p-4 text-xs overflow-x-auto whitespace-pre">
+{`{
+  "memvault": {
+    "enabled": true,
+    "config": {
+      "apiBaseUrl": "${getApiBaseUrl()}",
+      "apiKey": "YOUR_API_KEY",
+      "projectId": "${currentProject.id}",
+      "agentId": "${guideAgent.agent_id}",
+      "userId": "default",
+      "autoRecall": true,
+      "autoCapture": true,
+      "topK": 5
+    }
+  }
+}`}
+                      </pre>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="absolute top-2 right-2 h-6 w-6"
+                        onClick={() =>
+                          copyToClipboard(
+                            JSON.stringify({
+                              memvault: {
+                                enabled: true,
+                                config: {
+                                  apiBaseUrl: getApiBaseUrl(),
+                                  apiKey: "YOUR_API_KEY",
+                                  projectId: currentProject.id,
+                                  agentId: guideAgent.agent_id,
+                                  userId: "default",
+                                  autoRecall: true,
+                                  autoCapture: true,
+                                  topK: 5,
+                                },
+                              },
+                            }, null, 2),
+                            "oc-config"
+                          )
+                        }
+                      >
+                        {copiedField === "oc-config" ? (
+                          <Check className="h-3 w-3 text-green-500" />
+                        ) : (
+                          <Copy className="h-3 w-3" />
+                        )}
+                      </Button>
+                    </div>
+
+                    <h4 className="text-sm font-semibold mt-4">3. 配置说明</h4>
+                    <div className="rounded-md border overflow-hidden">
+                      <table className="w-full text-xs">
+                        <thead className="bg-muted/50">
+                          <tr>
+                            <th className="px-3 py-1.5 text-left font-medium">参数</th>
+                            <th className="px-3 py-1.5 text-left font-medium">说明</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y">
+                          <tr><td className="px-3 py-1.5 font-mono">apiBaseUrl</td><td className="px-3 py-1.5 text-muted-foreground">MemVault API 地址</td></tr>
+                          <tr><td className="px-3 py-1.5 font-mono">apiKey</td><td className="px-3 py-1.5 text-muted-foreground">在「设置 &rarr; API Key」中创建</td></tr>
+                          <tr><td className="px-3 py-1.5 font-mono">projectId</td><td className="px-3 py-1.5 text-muted-foreground">当前项目 ID（已自动填入）</td></tr>
+                          <tr><td className="px-3 py-1.5 font-mono">agentId</td><td className="px-3 py-1.5 text-muted-foreground">Agent ID（已自动填入）</td></tr>
+                          <tr><td className="px-3 py-1.5 font-mono">autoRecall</td><td className="px-3 py-1.5 text-muted-foreground">对话前自动注入相关记忆</td></tr>
+                          <tr><td className="px-3 py-1.5 font-mono">autoCapture</td><td className="px-3 py-1.5 text-muted-foreground">对话后自动提取并存储记忆</td></tr>
+                          <tr><td className="px-3 py-1.5 font-mono">topK</td><td className="px-3 py-1.5 text-muted-foreground">每轮最多召回的记忆条数</td></tr>
+                        </tbody>
+                      </table>
+                    </div>
+
+                    <h4 className="text-sm font-semibold mt-4">4. 插件提供的 Agent 工具</h4>
+                    <p className="text-sm text-muted-foreground mb-2">
+                      安装后，你的 OpenClaw Agent 将自动获得以下记忆管理工具：
+                    </p>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      <div className="rounded-md border p-2">
+                        <Badge variant="secondary" className="text-xs font-mono">memory_search</Badge>
+                        <p className="text-xs text-muted-foreground mt-1">自然语言搜索记忆</p>
+                      </div>
+                      <div className="rounded-md border p-2">
+                        <Badge variant="secondary" className="text-xs font-mono">memory_store</Badge>
+                        <p className="text-xs text-muted-foreground mt-1">显式存储一条记忆</p>
+                      </div>
+                      <div className="rounded-md border p-2">
+                        <Badge variant="secondary" className="text-xs font-mono">memory_list</Badge>
+                        <p className="text-xs text-muted-foreground mt-1">列出所有记忆</p>
+                      </div>
+                      <div className="rounded-md border p-2">
+                        <Badge variant="secondary" className="text-xs font-mono">memory_get</Badge>
+                        <p className="text-xs text-muted-foreground mt-1">按 ID 获取指定记忆</p>
+                      </div>
+                      <div className="rounded-md border p-2">
+                        <Badge variant="secondary" className="text-xs font-mono">memory_forget</Badge>
+                        <p className="text-xs text-muted-foreground mt-1">删除指定记忆（GDPR 合规）</p>
+                      </div>
+                    </div>
+
+                    <h4 className="text-sm font-semibold mt-4">5. CLI 命令</h4>
+                    <div className="relative">
+                      <pre className="rounded-md border bg-muted/50 p-4 text-xs overflow-x-auto whitespace-pre">
+{`# 搜索记忆
+openclaw memvault search "用户偏好"
+
+# 查看统计
+openclaw memvault stats`}
+                      </pre>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="absolute top-2 right-2 h-6 w-6"
+                        onClick={() =>
+                          copyToClipboard(
+                            `openclaw memvault search "用户偏好"`,
+                            "oc-cli"
+                          )
+                        }
+                      >
+                        {copiedField === "oc-cli" ? (
+                          <Check className="h-3 w-3 text-green-500" />
+                        ) : (
+                          <Copy className="h-3 w-3" />
+                        )}
+                      </Button>
+                    </div>
+
+                    <div className="rounded-md bg-purple-50 dark:bg-purple-950/30 p-3 text-xs text-purple-700 dark:text-purple-300">
+                      <strong>核心机制:</strong> 插件通过 <strong>Auto-Recall</strong>（对话前自动注入相关记忆）和 <strong>Auto-Capture</strong>（对话后自动提取并存储关键信息）两个钩子实现无感记忆管理。
+                      配置完成后，Agent 会自动记住跨会话的用户偏好和重要信息。
                     </div>
                   </div>
                 </TabsContent>
               </Tabs>
-            </>
+            </div>
           )}
 
-          <DialogFooter>
+          <DialogFooter className="flex-shrink-0">
             <Button variant="outline" onClick={() => setShowGuideDialog(false)}>
               关闭
             </Button>

@@ -1,0 +1,25 @@
+{
+  "name": "@rigouu0407/openclaw-plugin",
+  "version": "1.0.0",
+  "description": "OpenClaw plugin for MemVault - persistent memory for AI agents",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": ["openclaw", "plugin", "memvault", "mem0", "memory", "ai-agent"],
+  "license": "MIT",
+  "peerDependencies": {
+    "openclaw": ">=1.0.0"
+  },
+  "devDependencies": {
+    "@sinclair/typebox": "^0.32.0",
+    "typescript": "^5.4.0"
+  },
+  "files": [
+    "dist/",
+    "openclaw.plugin.json"
+  ]
+}
