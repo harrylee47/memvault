@@ -1,22 +1,27 @@
 /**
- * @memvault/openclaw-plugin v1.2.0
+ * @memvault/openclaw-plugin v1.3.0
  *
  * OpenClaw plugin that gives agents persistent cross-session memory
- * backed by a self-hosted MemVault instance, with local memory synergy.
+ * backed by a self-hosted MemVault instance.
+ *
+ * Two memory modes:
+ *  - enhance (default): MemVault semantic search + MEMORY.md as static context.
+ *    OpenClaw native memory system works as before, plugin never writes local files.
+ *  - standalone: Pure MemVault, no local file interaction at all.
  *
  * Features:
- *  - Three-layer Auto-Recall: MemVault + MEMORY.md + daily log
- *  - Auto-Capture with dual-write: MemVault + local files
- *  - 5 agent tools: memvault_search, memvault_store, memvault_list, memvault_get, memvault_forget
- *  - CLI sub-commands: `openclaw memvault search / stats / sync`
+ *  - Auto-Recall: MemVault search (+ MEMORY.md in enhance mode)
+ *  - Auto-Capture: conversation → MemVault only (zero local file writes)
+ *  - 5 agent tools: memvault_search/store/list/get/forget
+ *  - CLI: `openclaw memvault search / stats / sync`
  *  - Coexists with OpenClaw native memory_search (no name conflicts)
  */
 import { Type } from "@sinclair/typebox";
-import { readFileSync, appendFileSync, existsSync, mkdirSync, readdirSync } from "node:fs";
+import { readFileSync, existsSync, readdirSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { homedir } from "node:os";
 // ---------------------------------------------------------------------------
-// LocalMemoryReader — reads/writes OpenClaw native memory files
+// LocalMemoryReader — read-only access to OpenClaw native memory files
 // ---------------------------------------------------------------------------
 class LocalMemoryReader {
     workspacePath;
@@ -28,6 +33,7 @@ class LocalMemoryReader {
     get isAvailable() {
         return existsSync(this.workspacePath);
     }
+    /** Read MEMORY.md as static context (agent "identity") */
     readMemoryMd(maxLength = 2000) {
         try {
             const filePath = join(this.workspacePath, "MEMORY.md");
@@ -43,49 +49,7 @@ class LocalMemoryReader {
             return "";
         }
     }
-    readTodayDailyLog(maxLength = 1000) {
-        try {
-            const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
-            const filePath = join(this.workspacePath, "memory", `${today}.md`);
-            if (!existsSync(filePath))
-                return "";
-            const content = readFileSync(filePath, "utf-8");
-            if (content.length <= maxLength)
-                return content;
-            return content.slice(0, maxLength) + "\n...(truncated)";
-        }
-        catch (err) {
-            console.warn("[memvault] Failed to read daily log:", err);
-            return "";
-        }
-    }
-    appendToMemoryMd(lines) {
-        try {
-            const filePath = join(this.workspacePath, "MEMORY.md");
-            const timestamp = new Date().toISOString().slice(0, 10);
-            const header = `\n\n<!-- memvault sync ${timestamp} -->\n`;
-            const content = header + lines.map((l) => `- ${l}`).join("\n") + "\n";
-            appendFileSync(filePath, content, "utf-8");
-        }
-        catch (err) {
-            console.warn("[memvault] Failed to append to MEMORY.md:", err);
-        }
-    }
-    appendToDailyLog(content) {
-        try {
-            const today = new Date().toISOString().slice(0, 10);
-            const memoryDir = join(this.workspacePath, "memory");
-            if (!existsSync(memoryDir)) {
-                mkdirSync(memoryDir, { recursive: true });
-            }
-            const filePath = join(memoryDir, `${today}.md`);
-            const timestamp = new Date().toISOString().slice(11, 19); // HH:MM:SS
-            appendFileSync(filePath, `\n- ${timestamp} ${content}`, "utf-8");
-        }
-        catch (err) {
-            console.warn("[memvault] Failed to append to daily log:", err);
-        }
-    }
+    /** Read all local memory files (for sync command) */
     readAllMemoryFiles() {
         const results = [];
         try {
@@ -151,7 +115,6 @@ class MemVaultClient {
         }
         return res.json();
     }
-    /** Add memories from a conversation */
     async addMemory(messages, agentId, userId, options = {}) {
         return this.request("/api/v1/memories", {
             method: "POST",
@@ -166,7 +129,6 @@ class MemVaultClient {
             }),
         });
     }
-    /** Search memories by natural language query */
     async searchMemories(query, agentId, options = {}) {
         return this.request("/api/v1/memories/search", {
             method: "POST",
@@ -179,28 +141,20 @@ class MemVaultClient {
             }),
         });
     }
-    /** List all memories for an agent */
     async listMemories(agentId, userId) {
         const params = new URLSearchParams({ agent_id: agentId });
         if (userId)
             params.append("user_id", userId);
         return this.request(`/api/v1/memories?${params.toString()}`);
     }
-    /** Get a specific memory by ID */
     async getMemory(memoryId) {
         return this.request(`/api/v1/memories/${memoryId}`);
     }
-    /** Delete a specific memory */
     async deleteMemory(memoryId) {
         return this.request(`/api/v1/memories/${memoryId}`, {
             method: "DELETE",
         });
     }
-    /** Get agent stats */
-    async getStats(agentId) {
-        return this.request(`/api/v1/memories?agent_id=${agentId}&page_size=1`);
-    }
-    /** Import memories in batch (for sync command) */
     async importMemories(memories, agentId, userId) {
         return this.request("/api/v1/memories/import", {
             method: "POST",
@@ -241,14 +195,15 @@ export default {
         const topK = config.topK || 5;
         const sourceApp = config.sourceApp || "openclaw";
         const searchThreshold = config.threshold;
-        const localMemorySync = config.localMemorySync !== false;
-        // Initialize LocalMemoryReader
-        const localReader = new LocalMemoryReader(config.workspacePath);
+        const memoryMode = config.memoryMode || "enhance";
+        // LocalMemoryReader only needed in enhance mode
+        const localReader = memoryMode === "enhance"
+            ? new LocalMemoryReader(config.workspacePath)
+            : null;
         // -------------------------------------------------------------------
-        // Hook: Auto-Recall — three-layer complementary recall
-        // Layer 1: MemVault semantic search (precise relevance)
-        // Layer 2: Local MEMORY.md (curated long-term knowledge)
-        // Layer 3: Today's daily log (recent activity context)
+        // Hook: Auto-Recall
+        //   enhance:    MemVault semantic search + MEMORY.md static context
+        //   standalone: MemVault semantic search only
         // -------------------------------------------------------------------
         if (autoRecall) {
             api.registerHook({
@@ -257,7 +212,7 @@ export default {
                     try {
                         const results = [];
                         const messages = (ctx.messages || []);
-                        // Layer 1: MemVault semantic search
+                        // MemVault semantic search
                         const lastUserMsg = [...messages]
                             .reverse()
                             .find((m) => m.role === "user");
@@ -268,15 +223,11 @@ export default {
                                 results.push(formatSection("MemVault Memories", memories));
                             }
                         }
-                        // Layer 2 & 3: Local memory files
-                        if (localReader.isAvailable) {
+                        // enhance mode: inject MEMORY.md as static context
+                        if (localReader?.isAvailable) {
                             const memoryMd = localReader.readMemoryMd(2000);
                             if (memoryMd) {
-                                results.push(formatSection("Long-term Memory (MEMORY.md)", memoryMd));
-                            }
-                            const dailyLog = localReader.readTodayDailyLog(1000);
-                            if (dailyLog) {
-                                results.push(formatSection("Today's Activity", dailyLog));
+                                results.push(formatSection("Agent Identity (MEMORY.md)", memoryMd));
                             }
                         }
                         if (results.length === 0)
@@ -291,7 +242,8 @@ export default {
             });
         }
         // -------------------------------------------------------------------
-        // Hook: Auto-Capture — dual-write to MemVault + local files
+        // Hook: Auto-Capture — conversation → MemVault only
+        // Both modes: never write to local files
         // -------------------------------------------------------------------
         if (autoCapture) {
             api.registerHook({
@@ -302,21 +254,7 @@ export default {
                         const recent = messages.slice(-captureWindowSize);
                         if (recent.length < 2)
                             return {};
-                        // Store in MemVault
-                        const result = await client.addMemory(recent, agentId, defaultUserId, { sourceApp });
-                        // Dual-write: sync new memories back to local files
-                        if (localMemorySync && localReader.isAvailable) {
-                            const newMemories = Array.isArray(result.results)
-                                ? result.results.filter((m) => m.event === "ADD")
-                                : [];
-                            if (newMemories.length > 0) {
-                                // Append to MEMORY.md
-                                const lines = newMemories.map((m) => m.memory || m.content);
-                                localReader.appendToMemoryMd(lines);
-                                // Record to daily log
-                                localReader.appendToDailyLog(`[memvault] Captured ${newMemories.length} memories`);
-                            }
-                        }
+                        await client.addMemory(recent, agentId, defaultUserId, { sourceApp });
                     }
                     catch (err) {
                         console.error("[memvault] auto-capture failed:", err);
@@ -326,7 +264,7 @@ export default {
             });
         }
         // -------------------------------------------------------------------
-        // Tool: memvault_search (renamed from memory_search to avoid conflict)
+        // Tool: memvault_search
         // -------------------------------------------------------------------
         api.registerTool({
             name: "memvault_search",
@@ -353,7 +291,7 @@ export default {
             },
         });
         // -------------------------------------------------------------------
-        // Tool: memvault_store (renamed from memory_store)
+        // Tool: memvault_store
         // -------------------------------------------------------------------
         api.registerTool({
             name: "memvault_store",
@@ -375,7 +313,7 @@ export default {
             },
         });
         // -------------------------------------------------------------------
-        // Tool: memvault_list (renamed from memory_list)
+        // Tool: memvault_list
         // -------------------------------------------------------------------
         api.registerTool({
             name: "memvault_list",
@@ -395,7 +333,7 @@ export default {
             },
         });
         // -------------------------------------------------------------------
-        // Tool: memvault_get (renamed from memory_get)
+        // Tool: memvault_get
         // -------------------------------------------------------------------
         api.registerTool({
             name: "memvault_get",
@@ -412,7 +350,7 @@ export default {
             },
         });
         // -------------------------------------------------------------------
-        // Tool: memvault_forget (renamed from memory_forget)
+        // Tool: memvault_forget
         // -------------------------------------------------------------------
         api.registerTool({
             name: "memvault_forget",
@@ -462,17 +400,20 @@ export default {
                         const t = m.memory_type || "unknown";
                         types[t] = (types[t] || 0) + 1;
                     });
-                    console.log(`MemVault Stats for agent "${agentId}":`);
+                    console.log(`MemVault Stats for agent "${agentId}" (mode: ${memoryMode}):`);
                     console.log(`  Total memories: ${memories.length}`);
                     Object.entries(types).forEach(([t, c]) => {
                         console.log(`  ${t}: ${c}`);
                     });
-                    if (localReader.isAvailable) {
+                    if (localReader?.isAvailable) {
                         const allLocal = localReader.readAllMemoryFiles();
                         console.log(`\nLocal memory files: ${allLocal.length}`);
                         allLocal.forEach((f) => {
                             console.log(`  ${f.source}: ${f.content.length} chars`);
                         });
+                    }
+                    else if (memoryMode === "standalone") {
+                        console.log(`\nLocal files: disabled (standalone mode)`);
                     }
                     else {
                         console.log(`\nLocal workspace: not found (${config.workspacePath || "~/.openclaw/workspace"})`);
@@ -490,11 +431,13 @@ export default {
             name: "memvault sync",
             description: "Import local OpenClaw memories into MemVault (one-time migration)",
             async run() {
-                if (!localReader.isAvailable) {
+                // sync always creates a temporary reader regardless of mode
+                const reader = localReader || new LocalMemoryReader(config.workspacePath);
+                if (!reader.isAvailable) {
                     console.log("No local workspace found. Nothing to sync.");
                     return;
                 }
-                const allMemories = localReader.readAllMemoryFiles();
+                const allMemories = reader.readAllMemoryFiles();
                 if (allMemories.length === 0) {
                     console.log("No local memories found.");
                     return;
@@ -516,8 +459,7 @@ export default {
                 console.log(`\nSync complete. Imported ${imported} memories from local files to MemVault.`);
             },
         });
-        console.log(`[memvault] Plugin loaded — agent=${agentId} recall=${autoRecall} capture=${autoCapture} ` +
-            `captureWindow=${captureWindowSize} localSync=${localMemorySync} ` +
-            `workspace=${localReader.isAvailable ? "found" : "not found"}`);
+        console.log(`[memvault] Plugin loaded — mode=${memoryMode} agent=${agentId} ` +
+            `recall=${autoRecall} capture=${autoCapture} captureWindow=${captureWindowSize}`);
     },
 };

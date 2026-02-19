@@ -1,14 +1,19 @@
 /**
- * @memvault/openclaw-plugin v1.2.0
+ * @memvault/openclaw-plugin v1.3.0
  *
  * OpenClaw plugin that gives agents persistent cross-session memory
- * backed by a self-hosted MemVault instance, with local memory synergy.
+ * backed by a self-hosted MemVault instance.
+ *
+ * Two memory modes:
+ *  - enhance (default): MemVault semantic search + MEMORY.md as static context.
+ *    OpenClaw native memory system works as before, plugin never writes local files.
+ *  - standalone: Pure MemVault, no local file interaction at all.
  *
  * Features:
- *  - Three-layer Auto-Recall: MemVault + MEMORY.md + daily log
- *  - Auto-Capture with dual-write: MemVault + local files
- *  - 5 agent tools: memvault_search, memvault_store, memvault_list, memvault_get, memvault_forget
- *  - CLI sub-commands: `openclaw memvault search / stats / sync`
+ *  - Auto-Recall: MemVault search (+ MEMORY.md in enhance mode)
+ *  - Auto-Capture: conversation → MemVault only (zero local file writes)
+ *  - 5 agent tools: memvault_search/store/list/get/forget
+ *  - CLI: `openclaw memvault search / stats / sync`
  *  - Coexists with OpenClaw native memory_search (no name conflicts)
  */
 interface ToolResult {
