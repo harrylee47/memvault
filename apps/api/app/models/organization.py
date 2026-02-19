@@ -6,13 +6,6 @@ from app.database import Base
 import enum
 
 
-class OrgPlan(str, enum.Enum):
-    FREE = "free"
-    STARTER = "starter"
-    PRO = "pro"
-    ENTERPRISE = "enterprise"
-
-
 class OrgRole(str, enum.Enum):
     OWNER = "owner"
     ADMIN = "admin"
@@ -26,7 +19,9 @@ class Organization(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     slug: Mapped[str] = mapped_column(String(255), unique=True, nullable=False, index=True)
-    plan: Mapped[str] = mapped_column(SAEnum(OrgPlan), default=OrgPlan.FREE)
+    plan: Mapped[str] = mapped_column(String(50), default="free")
+    plan_expires_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    plan_activated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 

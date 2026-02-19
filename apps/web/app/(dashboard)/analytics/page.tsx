@@ -245,7 +245,7 @@ export default function AnalyticsPage() {
                 <card.icon className="h-4 w-4" style={{ color: card.color }} />
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">{card.value.toLocaleString()}</div>
+                <div className="text-2xl font-bold">{(card.value ?? 0).toLocaleString()}</div>
               </CardContent>
             </Card>
           ))}
@@ -362,7 +362,7 @@ export default function AnalyticsPage() {
             <BarChart3 className="h-4 w-4" style={{ color: COLORS.cyan }} />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{Math.round(avgLength).toLocaleString()}</div>
+            <div className="text-2xl font-bold">{Math.round(avgLength ?? 0).toLocaleString()}</div>
             <p className="text-xs text-muted-foreground">字符 / 条记忆</p>
           </CardContent>
         </Card>
@@ -546,8 +546,8 @@ export default function AnalyticsPage() {
     if (!agentData) return <EmptyState message="暂无 Agent 分析数据" />;
 
     const agents = agentData.agents ?? [];
-    const typeDistribution = agentData.type_distribution
-      ? Object.entries(agentData.type_distribution).map(([name, value]) => ({
+    const typeDistribution = agentData.by_type
+      ? Object.entries(agentData.by_type).map(([name, value]) => ({
           name,
           value: value as number,
         }))
@@ -580,7 +580,7 @@ export default function AnalyticsPage() {
                       <tr key={agent.id ?? agent.name} className="border-b last:border-0">
                         <td className="py-3 pr-4 font-medium">{agent.name ?? "-"}</td>
                         <td className="py-3 pr-4">
-                          <Badge variant="secondary">{agent.type ?? "unknown"}</Badge>
+                          <Badge variant="secondary">{agent.agent_type ?? "unknown"}</Badge>
                         </td>
                         <td className="py-3 pr-4">{agent.memory_count ?? 0}</td>
                         <td className="py-3 text-muted-foreground">

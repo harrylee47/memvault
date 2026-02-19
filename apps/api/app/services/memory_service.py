@@ -5,7 +5,7 @@ import logging
 from datetime import datetime
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, delete
-from app.models.memory import Memory, MemoryState
+from app.models.memory import Memory, MemoryState, MemoryType
 from app.models.project import ProjectConfig
 from app.utils.memory_client import get_project_memory_client
 
@@ -22,12 +22,16 @@ async def _get_mem0_client(project_id: str, db: AsyncSession):
 
 async def add_memory(
     project_id: str,
-    messages: list[dict],
+    messages: list[dict] | str,
     user_id: str | None,
     agent_id: str | None,
     run_id: str | None,
     metadata: dict | None,
     db: AsyncSession,
+    source_app: str | None = None,
+    infer: bool = True,
+    prompt: str | None = None,
+    memory_type: str | None = None,
 ) -> list[dict]:
     """添加记忆 - 调用 mem0.add()"""
     client = await _get_mem0_client(project_id, db)
@@ -41,33 +45,96 @@ async def add_memory(
         kwargs["run_id"] = run_id
     if metadata:
         kwargs["metadata"] = metadata
+    if not infer:
+        kwargs["infer"] = False
+    if prompt:
+        kwargs["prompt"] = prompt
+    if memory_type:
+        kwargs["memory_type"] = memory_type
 
     result = client.add(messages, **kwargs)
 
     # 同步到 PostgreSQL
-    created_memories = []
+    affected_memories = []
     if result and "results" in result:
         for item in result["results"]:
-            if item.get("event") in ("ADD", "add"):
+            event = (item.get("event") or "").upper()
+            mem0_id = item.get("id")
+
+            if event == "ADD":
+                # 根据 memory_type 参数确定 PG 中的类型
+                pg_memory_type = MemoryType.SEMANTIC
+                if memory_type == "procedural_memory":
+                    pg_memory_type = MemoryType.PROCEDURAL
+
                 memory = Memory(
                     id=str(uuid.uuid4()),
                     project_id=project_id,
-                    mem0_memory_id=item.get("id"),
+                    mem0_memory_id=mem0_id,
                     user_id=user_id,
                     agent_id=agent_id,
                     run_id=run_id,
                     content=item.get("memory", ""),
+                    memory_type=pg_memory_type,
                     metadata_json=json.dumps(metadata) if metadata else None,
+                    source_app=source_app,
                 )
                 db.add(memory)
-                created_memories.append({
+                affected_memories.append({
                     "id": memory.id,
-                    "mem0_memory_id": item.get("id"),
+                    "mem0_memory_id": mem0_id,
                     "memory": item.get("memory", ""),
-                    "event": item.get("event"),
+                    "event": "ADD",
                 })
 
-    return created_memories if created_memories else (result.get("results", []) if result else [])
+            elif event == "UPDATE" and mem0_id:
+                # 同步更新 PostgreSQL 中的记忆内容
+                pg_result = await db.execute(
+                    select(Memory).where(
+                        Memory.project_id == project_id,
+                        Memory.mem0_memory_id == mem0_id,
+                        Memory.state == MemoryState.ACTIVE,
+                    )
+                )
+                existing = pg_result.scalar_one_or_none()
+                if existing:
+                    existing.content = item.get("memory", existing.content)
+                    existing.updated_at = datetime.utcnow()
+                affected_memories.append({
+                    "id": existing.id if existing else None,
+                    "mem0_memory_id": mem0_id,
+                    "memory": item.get("memory", ""),
+                    "event": "UPDATE",
+                    "previous_memory": item.get("previous_memory"),
+                })
+
+            elif event == "DELETE" and mem0_id:
+                # 同步删除（标记为已删除）
+                pg_result = await db.execute(
+                    select(Memory).where(
+                        Memory.project_id == project_id,
+                        Memory.mem0_memory_id == mem0_id,
+                    )
+                )
+                existing = pg_result.scalar_one_or_none()
+                if existing:
+                    existing.state = MemoryState.DELETED
+                affected_memories.append({
+                    "id": existing.id if existing else None,
+                    "mem0_memory_id": mem0_id,
+                    "memory": item.get("memory", ""),
+                    "event": "DELETE",
+                })
+
+            else:
+                # NOOP 或其他事件
+                affected_memories.append({
+                    "id": item.get("id"),
+                    "memory": item.get("memory", ""),
+                    "event": event or "NOOP",
+                })
+
+    return affected_memories if affected_memories else (result.get("results", []) if result else [])
 
 
 async def get_all_memories(
@@ -157,6 +224,7 @@ async def search_memories(
     limit: int,
     filters: dict | None,
     db: AsyncSession,
+    threshold: float | None = None,
 ) -> list[dict]:
     """搜索记忆 - 调用 mem0.search()"""
     client = await _get_mem0_client(project_id, db)
@@ -170,6 +238,8 @@ async def search_memories(
         kwargs["run_id"] = run_id
     if filters:
         kwargs["filters"] = filters
+    if threshold is not None:
+        kwargs["threshold"] = threshold
 
     result = client.search(query, **kwargs)
 
@@ -205,24 +275,41 @@ async def get_memory_history(project_id: str, memory_id: str, db: AsyncSession) 
     client = await _get_mem0_client(project_id, db)
     try:
         history = client.history(memory.mem0_memory_id)
-        return history if isinstance(history, list) else []
+        if not isinstance(history, list):
+            return []
+        # 字段映射: mem0 返回 old_memory/new_memory/event，前端期望 old_content/new_content/action
+        normalized = []
+        for entry in history:
+            normalized.append({
+                "id": entry.get("id", ""),
+                "memory_id": entry.get("memory_id", ""),
+                "old_content": entry.get("old_memory") or entry.get("old_content", ""),
+                "new_content": entry.get("new_memory") or entry.get("new_content", ""),
+                "action": (entry.get("event") or entry.get("action", "")).lower(),
+                "created_at": entry.get("created_at") or entry.get("updated_at", ""),
+            })
+        return normalized
     except Exception as e:
         logger.warning(f"Failed to get memory history: {e}")
         return []
 
 
 async def reset_memories(project_id: str, user_id: str | None, agent_id: str | None, db: AsyncSession) -> int:
-    """重置记忆 - 调用 mem0.reset()"""
+    """重置记忆 - 调用 mem0.delete_all() 或 mem0.reset()"""
     client = await _get_mem0_client(project_id, db)
 
-    kwargs = {}
-    if user_id:
-        kwargs["user_id"] = user_id
-    if agent_id:
-        kwargs["agent_id"] = agent_id
-
     try:
-        client.reset(**kwargs)
+        if user_id or agent_id:
+            # 按条件删除：使用 delete_all (支持 user_id/agent_id 过滤)
+            kwargs = {}
+            if user_id:
+                kwargs["user_id"] = user_id
+            if agent_id:
+                kwargs["agent_id"] = agent_id
+            client.delete_all(**kwargs)
+        else:
+            # 全量重置：使用 reset (不接受参数)
+            client.reset()
     except Exception as e:
         logger.warning(f"Failed to reset mem0 memories: {e}")
 

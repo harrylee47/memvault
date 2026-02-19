@@ -12,6 +12,7 @@ class Webhook(Base):
     project_id: Mapped[str] = mapped_column(String(36), ForeignKey("projects.id", ondelete="CASCADE"), nullable=False, index=True)
     url: Mapped[str] = mapped_column(String(500), nullable=False)
     secret: Mapped[str] = mapped_column(String(255), nullable=False)
+    format: Mapped[str] = mapped_column(String(20), default="generic")  # generic, wecom, dingtalk, slack, feishu
     events: Mapped[list] = mapped_column(JSON, default=lambda: ["memory.created", "memory.updated", "memory.deleted"])
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)

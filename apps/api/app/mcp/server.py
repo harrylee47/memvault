@@ -20,10 +20,15 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from sqlalchemy import func as sa_func
+
 from app.database import async_session
 from app.middleware.auth import hash_api_key
 from app.models.api_key import ApiKey
 from app.models.project import Project, ProjectConfig
+from app.models.memory import Memory, MemoryState
+from app.models.request_log import RequestLog
+from app.services.plan_service import check_memory_limit, check_request_limit
 from app.utils.memory_client import get_project_memory_client
 
 logger = logging.getLogger(__name__)
@@ -206,6 +211,21 @@ MCP_TOOLS = [
 
 # ---------- 工具执行 ----------
 
+async def _check_plan_limits(project_id: str, check_memory: bool = False, check_request: bool = False):
+    """检查 Plan 限制，超限抛出 HTTPException"""
+    async with async_session() as db:
+        proj_result = await db.execute(select(Project).where(Project.id == project_id))
+        project = proj_result.scalar_one_or_none()
+        if not project:
+            return
+        org_proj_result = await db.execute(select(Project.id).where(Project.org_id == project.org_id))
+        org_project_ids = [row[0] for row in org_proj_result.all()]
+        if check_memory:
+            await check_memory_limit(project.org_id, org_project_ids, db)
+        if check_request:
+            await check_request_limit(project.org_id, org_project_ids, db)
+
+
 async def _handle_tool_call(project_id: str, tool_name: str, arguments: dict) -> list[dict]:
     """
     执行 MCP 工具调用，返回 MCP content 列表。
@@ -217,6 +237,12 @@ async def _handle_tool_call(project_id: str, tool_name: str, arguments: dict) ->
         messages = arguments.get("messages", [])
         if not messages:
             return [{"type": "text", "text": "Error: messages is required and cannot be empty."}]
+
+        # 检查记忆数量和请求限制
+        try:
+            await _check_plan_limits(project_id, check_memory=True, check_request=True)
+        except HTTPException as e:
+            return [{"type": "text", "text": f"Plan limit exceeded: {e.detail}"}]
 
         kwargs = {}
         if arguments.get("user_id"):
@@ -233,6 +259,12 @@ async def _handle_tool_call(project_id: str, tool_name: str, arguments: dict) ->
         query = arguments.get("query", "")
         if not query:
             return [{"type": "text", "text": "Error: query is required."}]
+
+        # 检查请求限制
+        try:
+            await _check_plan_limits(project_id, check_request=True)
+        except HTTPException as e:
+            return [{"type": "text", "text": f"Plan limit exceeded: {e.detail}"}]
 
         kwargs = {"limit": arguments.get("limit", 10)}
         if arguments.get("user_id"):

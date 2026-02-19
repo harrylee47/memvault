@@ -67,10 +67,14 @@ export function Header() {
         >
           <ThemeIcon className="h-4 w-4" />
         </Button>
-        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+        <button
+          className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+          onClick={() => router.push("/profile")}
+          title="个人资料"
+        >
           <User className="h-4 w-4" />
           <span>{user?.name}</span>
-        </div>
+        </button>
         <Button variant="ghost" size="icon" onClick={handleLogout} title="退出登录">
           <LogOut className="h-4 w-4" />
         </Button>

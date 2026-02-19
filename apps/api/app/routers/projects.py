@@ -38,12 +38,17 @@ async def create_project(
     db: AsyncSession = Depends(get_db),
 ):
     """在组织下创建项目"""
+    from app.services.plan_service import check_project_limit
+
     # 验证组织成员
     member_result = await db.execute(
         select(OrgMember).where(OrgMember.org_id == org_id, OrgMember.user_id == auth.user_id)
     )
     if not member_result.scalar_one_or_none():
         raise HTTPException(status_code=403, detail="Not a member of this organization")
+
+    # 检查项目数量限制
+    await check_project_limit(org_id, db)
 
     project = Project(
         id=str(uuid.uuid4()),
@@ -115,9 +120,18 @@ async def delete_project(
     db: AsyncSession = Depends(get_db),
 ):
     """删除项目"""
+    from sqlalchemy import func
+
     result = await db.execute(select(Project).where(Project.id == project_id))
     project = result.scalar_one_or_none()
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
+
+    # 检查组织下是否只剩一个项目
+    project_count = (await db.execute(
+        select(func.count()).select_from(Project).where(Project.org_id == project.org_id)
+    )).scalar() or 0
+    if project_count <= 1:
+        raise HTTPException(status_code=400, detail="Cannot delete last project. At least one project is required per organization.")
 
     await db.delete(project)

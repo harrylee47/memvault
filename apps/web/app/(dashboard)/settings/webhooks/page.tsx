@@ -37,12 +37,21 @@ const AVAILABLE_EVENTS = [
   { value: "memory.deleted", label: "memory.deleted" },
 ];
 
+const WEBHOOK_FORMATS = [
+  { value: "generic", label: "通用 (Generic)", description: "标准 JSON 格式，含签名验证" },
+  { value: "wecom", label: "企业微信", description: "企业微信群机器人 Webhook" },
+  { value: "dingtalk", label: "钉钉", description: "钉钉群机器人 Webhook" },
+  { value: "feishu", label: "飞书", description: "飞书群机器人 Webhook" },
+  { value: "slack", label: "Slack", description: "Slack Incoming Webhook" },
+];
+
 export default function WebhooksPage() {
   const { currentProject } = useProjectStore();
   const [webhooks, setWebhooks] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [showDialog, setShowDialog] = useState(false);
   const [url, setUrl] = useState("");
+  const [webhookFormat, setWebhookFormat] = useState("generic");
   const [selectedEvents, setSelectedEvents] = useState<string[]>(["*"]);
   const [creating, setCreating] = useState(false);
   const [testingId, setTestingId] = useState<string | null>(null);
@@ -77,10 +86,11 @@ export default function WebhooksPage() {
     if (!currentProject || !url) return;
     setCreating(true);
     try {
-      await api.createWebhook(currentProject.id, { url, events: selectedEvents });
+      await api.createWebhook(currentProject.id, { url, format: webhookFormat, events: selectedEvents });
       toast({ title: "Webhook 已创建" });
       setShowDialog(false);
       setUrl("");
+      setWebhookFormat("generic");
       setSelectedEvents(["*"]);
       loadWebhooks();
     } catch (err: any) {
@@ -213,6 +223,32 @@ export default function WebhooksPage() {
             </DialogHeader>
             <div className="space-y-4">
               <div className="space-y-2">
+                <Label>消息格式</Label>
+                <div className="grid grid-cols-2 gap-2">
+                  {WEBHOOK_FORMATS.map((fmt) => (
+                    <label
+                      key={fmt.value}
+                      className={`flex flex-col rounded-md border px-3 py-2 cursor-pointer hover:bg-muted/50 transition-colors ${
+                        webhookFormat === fmt.value ? "border-primary bg-primary/5" : ""
+                      }`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="radio"
+                          name="webhook-format"
+                          value={fmt.value}
+                          checked={webhookFormat === fmt.value}
+                          onChange={(e) => setWebhookFormat(e.target.value)}
+                          className="accent-primary"
+                        />
+                        <span className="text-sm font-medium">{fmt.label}</span>
+                      </div>
+                      <span className="text-[11px] text-muted-foreground ml-5">{fmt.description}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+              <div className="space-y-2">
                 <Label>URL</Label>
                 <Input
                   placeholder="https://your-server.com/webhook"
@@ -273,7 +309,12 @@ export default function WebhooksPage() {
                     <div className="flex items-center gap-3">
                       <Webhook className="h-5 w-5 text-muted-foreground" />
                       <div>
-                        <div className="font-mono text-sm">{wh.url}</div>
+                        <div className="font-mono text-sm flex items-center gap-2">
+                          {wh.url}
+                          <Badge variant="outline" className="text-[10px]">
+                            {WEBHOOK_FORMATS.find((f) => f.value === wh.format)?.label || wh.format || "Generic"}
+                          </Badge>
+                        </div>
                         <div className="mt-1 flex gap-1 flex-wrap">
                           {(Array.isArray(wh.events) ? wh.events : []).map(
                             (event: string) => (

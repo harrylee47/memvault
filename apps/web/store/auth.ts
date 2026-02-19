@@ -5,8 +5,11 @@ interface User {
   id: string;
   email: string;
   name: string;
+  provider: string;
   avatar_url?: string;
-  is_admin?: boolean;
+  is_active: boolean;
+  is_admin: boolean;
+  created_at: string;
 }
 
 interface AuthState {

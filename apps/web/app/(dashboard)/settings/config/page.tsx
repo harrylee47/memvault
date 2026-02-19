@@ -114,6 +114,7 @@ export default function ConfigPage() {
   const [embedderProvider, setEmbedderProvider] = useState("openai");
   const [embedderModel, setEmbedderModel] = useState("text-embedding-3-small");
   const [embedderModelCustom, setEmbedderModelCustom] = useState(false);
+  const [embedderApiKey, setEmbedderApiKey] = useState("");
   const [embedderApiBaseUrl, setEmbedderApiBaseUrl] = useState("");
 
   // Advanced
@@ -135,6 +136,7 @@ export default function ConfigPage() {
           const presetModels = LLM_MODELS[provider] || [];
           setLlmModelCustom(!presetModels.includes(model));
           setLlmTemperature(data.llm.temperature ?? 0.7);
+          setLlmApiKey(data.llm.api_key || "");
           setLlmApiBaseUrl(data.llm.api_base_url || "");
         }
         if (data.embedder) {
@@ -144,6 +146,7 @@ export default function ConfigPage() {
           setEmbedderModel(model);
           const presetModels = EMBEDDER_MODELS[provider] || [];
           setEmbedderModelCustom(!presetModels.includes(model));
+          setEmbedderApiKey(data.embedder.api_key || "");
           setEmbedderApiBaseUrl(data.embedder.api_base_url || "");
         }
         setCustomInstructions(data.custom_instructions || "");
@@ -214,6 +217,7 @@ export default function ConfigPage() {
         embedder: {
           provider: embedderProvider,
           model: embedderModel,
+          api_key: embedderApiKey || undefined,
           api_base_url: embedderApiBaseUrl || undefined,
         },
         custom_instructions: customInstructions || undefined,
@@ -415,7 +419,16 @@ export default function ConfigPage() {
                 </Select>
               )}
             </div>
-            <div className="col-span-2 space-y-2">
+            <div className="space-y-2">
+              <Label>API Key (可选覆盖)</Label>
+              <Input
+                type="password"
+                placeholder="使用环境变量默认值"
+                value={embedderApiKey}
+                onChange={(e) => setEmbedderApiKey(e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
               <Label>API Base URL (可选覆盖)</Label>
               <Input
                 placeholder={DEFAULT_API_BASE[embedderProvider] || "使用官方默认地址"}
@@ -423,7 +436,7 @@ export default function ConfigPage() {
                 onChange={(e) => setEmbedderApiBaseUrl(e.target.value)}
               />
               <p className="text-xs text-muted-foreground">
-                留空使用官方默认地址
+                留空使用官方默认地址，可自定义为代理或兼容 API 地址
               </p>
             </div>
           </div>

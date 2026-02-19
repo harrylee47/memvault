@@ -16,11 +16,13 @@ router = APIRouter(prefix="/webhooks", tags=["Webhook"])
 
 class WebhookCreate(BaseModel):
     url: str
+    format: str = "generic"  # generic, wecom, dingtalk, slack, feishu
     events: list[str] = ["memory.created", "memory.updated", "memory.deleted"]
 
 
 class WebhookUpdate(BaseModel):
     url: str | None = None
+    format: str | None = None
     events: list[str] | None = None
     is_active: bool | None = None
 
@@ -51,6 +53,7 @@ async def list_webhooks(
         {
             "id": wh.id,
             "url": wh.url,
+            "format": wh.format or "generic",
             "events": wh.events,
             "is_active": wh.is_active,
             "created_at": wh.created_at.isoformat() if wh.created_at else None,
@@ -72,6 +75,7 @@ async def create_webhook(
         project_id=project_id,
         url=data.url,
         secret=secret,
+        format=data.format,
         events=data.events,
     )
     db.add(webhook)
@@ -80,6 +84,7 @@ async def create_webhook(
     return {
         "id": webhook.id,
         "url": webhook.url,
+        "format": webhook.format,
         "secret": secret,
         "events": webhook.events,
         "is_active": webhook.is_active,
@@ -101,6 +106,8 @@ async def update_webhook(
         raise HTTPException(status_code=404, detail="Webhook not found")
     if data.url is not None:
         webhook.url = data.url
+    if data.format is not None:
+        webhook.format = data.format
     if data.events is not None:
         webhook.events = data.events
     if data.is_active is not None:
@@ -109,6 +116,7 @@ async def update_webhook(
     return {
         "id": webhook.id,
         "url": webhook.url,
+        "format": webhook.format or "generic",
         "events": webhook.events,
         "is_active": webhook.is_active,
         "created_at": webhook.created_at.isoformat() if webhook.created_at else None,

@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { useProjectStore } from "@/store/project";
+import { useAuthStore } from "@/store/auth";
 import { api } from "@/lib/api-client";
 import { formatDate, truncate, generateSlug, validateAgentId } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -72,6 +73,8 @@ interface AgentMemory {
 
 export default function AgentsPage() {
   const { currentProject } = useProjectStore();
+  const { user } = useAuthStore();
+  const currentUserId = user?.id || "default";
   const [agents, setAgents] = useState<Agent[]>([]);
   const [loading, setLoading] = useState(true);
   const [showDialog, setShowDialog] = useState(false);
@@ -569,9 +572,6 @@ export default function AgentsPage() {
                     <h4 className="text-sm font-semibold text-amber-800 dark:text-amber-200">
                       前置条件：获取 API Key
                     </h4>
-                    <p className="text-xs text-amber-700 dark:text-amber-300 mt-1">
-                      使用 REST API 或 Webhook 方式接入前，需要先创建 API Key 用于身份验证。
-                    </p>
                     <ol className="text-xs text-amber-700 dark:text-amber-300 mt-2 list-decimal list-inside space-y-1">
                       <li>进入左侧菜单「设置 &rarr; API Key」页面</li>
                       <li>点击「创建 API Key」，填写名称并选择权限范围</li>
@@ -613,14 +613,14 @@ export default function AgentsPage() {
                       <code className="mx-1 px-1 py-0.5 bg-muted rounded text-xs">
                         claude_desktop_config.json
                       </code>
-                      中:
+                      中（请将 <code className="px-1 py-0.5 bg-muted rounded text-xs">YOUR_API_KEY</code> 替换为你的 API Key）:
                     </p>
                     <div className="relative">
                       <pre className="rounded-md border bg-muted/50 p-4 text-xs overflow-x-auto whitespace-pre">
 {`{
   "mcpServers": {
     "memvault": {
-      "url": "${getApiBaseUrl()}/mcp/sse?project_id=${currentProject.id}&agent_id=${guideAgent.agent_id}"
+      "url": "${getApiBaseUrl()}/mcp/${currentProject.id}/sse?api_key=YOUR_API_KEY&agent_id=${guideAgent.agent_id}"
     }
   }
 }`}
@@ -635,7 +635,7 @@ export default function AgentsPage() {
                               {
                                 mcpServers: {
                                   memvault: {
-                                    url: `${getApiBaseUrl()}/mcp/sse?project_id=${currentProject.id}&agent_id=${guideAgent.agent_id}`,
+                                    url: `${getApiBaseUrl()}/mcp/${currentProject.id}/sse?api_key=YOUR_API_KEY&agent_id=${guideAgent.agent_id}`,
                                   },
                                 },
                               },
@@ -657,7 +657,7 @@ export default function AgentsPage() {
                     <h4 className="text-sm font-semibold mt-4">2. SSE 端点</h4>
                     <div className="relative">
                       <pre className="rounded-md border bg-muted/50 p-4 text-xs overflow-x-auto whitespace-pre break-all">
-{`${getApiBaseUrl()}/mcp/sse?project_id=${currentProject.id}&agent_id=${guideAgent.agent_id}`}
+{`${getApiBaseUrl()}/mcp/${currentProject.id}/sse?api_key=YOUR_API_KEY&agent_id=${guideAgent.agent_id}`}
                       </pre>
                       <Button
                         variant="ghost"
@@ -665,7 +665,7 @@ export default function AgentsPage() {
                         className="absolute top-2 right-2 h-6 w-6"
                         onClick={() =>
                           copyToClipboard(
-                            `${getApiBaseUrl()}/mcp/sse?project_id=${currentProject.id}&agent_id=${guideAgent.agent_id}`,
+                            `${getApiBaseUrl()}/mcp/${currentProject.id}/sse?api_key=YOUR_API_KEY&agent_id=${guideAgent.agent_id}`,
                             "mcp-sse"
                           )
                         }
@@ -678,9 +678,14 @@ export default function AgentsPage() {
                       </Button>
                     </div>
 
+                    <div className="rounded-md bg-amber-50 dark:bg-amber-950/30 p-3 text-xs text-amber-700 dark:text-amber-300">
+                      <strong>安全提示:</strong> 请在 <strong>API Key 管理</strong> 页面创建 API Key，并替换上方配置中的 <code className="px-1 py-0.5 bg-amber-100 dark:bg-amber-900 rounded">YOUR_API_KEY</code>。
+                      MCP 通过 API Key 进行身份验证，确保只有授权客户端可以访问你的记忆数据。
+                    </div>
+
                     <div className="rounded-md bg-blue-50 dark:bg-blue-950/30 p-3 text-xs text-blue-700 dark:text-blue-300">
                       <strong>提示:</strong> MCP (Model Context Protocol) 允许 AI Agent 通过标准化协议直接访问 MemVault 的记忆存储和检索能力。
-                      配置后，Agent 可以自动读取和写入记忆。MCP 方式无需 API Key。
+                      配置后，Agent 可以自动读取和写入记忆。
                     </div>
                   </div>
                 </TabsContent>
@@ -688,7 +693,8 @@ export default function AgentsPage() {
                 {/* REST API 接入 */}
                 <TabsContent value="rest" className="space-y-4">
                   <div className="space-y-3">
-                    <h4 className="text-sm font-semibold">1. 添加记忆</h4>
+                    <h4 className="text-sm font-semibold">1. 添加记忆（自动提取）</h4>
+                    <p className="text-xs text-muted-foreground">传入对话消息，LLM 自动从中提取关键事实并存储</p>
                     <div className="relative">
                       <pre className="rounded-md border bg-muted/50 p-4 text-xs overflow-x-auto whitespace-pre">
 {`curl -X POST "${getApiBaseUrl()}/api/v1/memories\\
@@ -697,11 +703,12 @@ export default function AgentsPage() {
   -H "Content-Type: application/json" \\
   -d '{
     "messages": [
-      {"role": "user", "content": "用户消息"},
-      {"role": "assistant", "content": "助手回复"}
+      {"role": "user", "content": "我下周要搬到大阪"},
+      {"role": "assistant", "content": "好的，祝搬家顺利！"}
     ],
     "agent_id": "${guideAgent.agent_id}",
-    "user_id": "user-123"
+    "user_id": "${currentUserId}",
+    "source_app": "my-app"
   }'`}
                       </pre>
                       <Button
@@ -710,7 +717,7 @@ export default function AgentsPage() {
                         className="absolute top-2 right-2 h-6 w-6"
                         onClick={() =>
                           copyToClipboard(
-                            `curl -X POST "${getApiBaseUrl()}/api/v1/memories?project_id=${currentProject.id}" \\\n  -H "Authorization: Bearer YOUR_API_KEY" \\\n  -H "Content-Type: application/json" \\\n  -d '{\n    "messages": [\n      {"role": "user", "content": "用户消息"},\n      {"role": "assistant", "content": "助手回复"}\n    ],\n    "agent_id": "${guideAgent.agent_id}",\n    "user_id": "user-123"\n  }'`,
+                            `curl -X POST "${getApiBaseUrl()}/api/v1/memories?project_id=${currentProject.id}" \\\n  -H "Authorization: Bearer YOUR_API_KEY" \\\n  -H "Content-Type: application/json" \\\n  -d '{\n    "messages": [\n      {"role": "user", "content": "我下周要搬到大阪"},\n      {"role": "assistant", "content": "好的，祝搬家顺利！"}\n    ],\n    "agent_id": "${guideAgent.agent_id}",\n    "user_id": "${currentUserId}",\n    "source_app": "my-app"\n  }'`,
                             "rest-add"
                           )
                         }
@@ -723,17 +730,19 @@ export default function AgentsPage() {
                       </Button>
                     </div>
 
-                    <h4 className="text-sm font-semibold">2. 搜索记忆</h4>
+                    <h4 className="text-sm font-semibold">2. 添加记忆（直接存储）</h4>
+                    <p className="text-xs text-muted-foreground">设置 <code className="px-1 py-0.5 bg-muted rounded">infer: false</code> 跳过 LLM 提取，直接存储原始内容</p>
                     <div className="relative">
                       <pre className="rounded-md border bg-muted/50 p-4 text-xs overflow-x-auto whitespace-pre">
-{`curl -X POST "${getApiBaseUrl()}/api/v1/memories/search\\
+{`curl -X POST "${getApiBaseUrl()}/api/v1/memories\\
 ?project_id=${currentProject.id}" \\
   -H "Authorization: Bearer YOUR_API_KEY" \\
   -H "Content-Type: application/json" \\
   -d '{
-    "query": "搜索关键词",
+    "messages": "用户偏好深色主题",
     "agent_id": "${guideAgent.agent_id}",
-    "limit": 10
+    "user_id": "${currentUserId}",
+    "infer": false
   }'`}
                       </pre>
                       <Button
@@ -742,7 +751,78 @@ export default function AgentsPage() {
                         className="absolute top-2 right-2 h-6 w-6"
                         onClick={() =>
                           copyToClipboard(
-                            `curl -X POST "${getApiBaseUrl()}/api/v1/memories/search?project_id=${currentProject.id}" \\\n  -H "Authorization: Bearer YOUR_API_KEY" \\\n  -H "Content-Type: application/json" \\\n  -d '{\n    "query": "搜索关键词",\n    "agent_id": "${guideAgent.agent_id}",\n    "limit": 10\n  }'`,
+                            `curl -X POST "${getApiBaseUrl()}/api/v1/memories?project_id=${currentProject.id}" \\\n  -H "Authorization: Bearer YOUR_API_KEY" \\\n  -H "Content-Type: application/json" \\\n  -d '{\n    "messages": "用户偏好深色主题",\n    "agent_id": "${guideAgent.agent_id}",\n    "user_id": "${currentUserId}",\n    "infer": false\n  }'`,
+                            "rest-add-raw"
+                          )
+                        }
+                      >
+                        {copiedField === "rest-add-raw" ? (
+                          <Check className="h-3 w-3 text-green-500" />
+                        ) : (
+                          <Copy className="h-3 w-3" />
+                        )}
+                      </Button>
+                    </div>
+
+                    <h4 className="text-sm font-semibold">3. 添加程序性记忆</h4>
+                    <p className="text-xs text-muted-foreground">记录 Agent 的行为规则，如「始终用中文回复」，Agent 搜索时会自动召回</p>
+                    <div className="relative">
+                      <pre className="rounded-md border bg-muted/50 p-4 text-xs overflow-x-auto whitespace-pre">
+{`curl -X POST "${getApiBaseUrl()}/api/v1/memories\\
+?project_id=${currentProject.id}" \\
+  -H "Authorization: Bearer YOUR_API_KEY" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "messages": [
+      {"role": "user", "content": "以后都用中文回复我"},
+      {"role": "assistant", "content": "好的，以后我会用中文回复"}
+    ],
+    "agent_id": "${guideAgent.agent_id}",
+    "user_id": "${currentUserId}",
+    "memory_type": "procedural_memory"
+  }'`}
+                      </pre>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="absolute top-2 right-2 h-6 w-6"
+                        onClick={() =>
+                          copyToClipboard(
+                            `curl -X POST "${getApiBaseUrl()}/api/v1/memories?project_id=${currentProject.id}" \\\n  -H "Authorization: Bearer YOUR_API_KEY" \\\n  -H "Content-Type: application/json" \\\n  -d '{\n    "messages": [\n      {"role": "user", "content": "以后都用中文回复我"},\n      {"role": "assistant", "content": "好的，以后我会用中文回复"}\n    ],\n    "agent_id": "${guideAgent.agent_id}",\n    "user_id": "${currentUserId}",\n    "memory_type": "procedural_memory"\n  }'`,
+                            "rest-add-procedural"
+                          )
+                        }
+                      >
+                        {copiedField === "rest-add-procedural" ? (
+                          <Check className="h-3 w-3 text-green-500" />
+                        ) : (
+                          <Copy className="h-3 w-3" />
+                        )}
+                      </Button>
+                    </div>
+
+                    <h4 className="text-sm font-semibold">4. 搜索记忆</h4>
+                    <div className="relative">
+                      <pre className="rounded-md border bg-muted/50 p-4 text-xs overflow-x-auto whitespace-pre">
+{`curl -X POST "${getApiBaseUrl()}/api/v1/memories/search\\
+?project_id=${currentProject.id}" \\
+  -H "Authorization: Bearer YOUR_API_KEY" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "query": "用户住在哪里",
+    "agent_id": "${guideAgent.agent_id}",
+    "user_id": "${currentUserId}",
+    "limit": 10,
+    "threshold": 0.5
+  }'`}
+                      </pre>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="absolute top-2 right-2 h-6 w-6"
+                        onClick={() =>
+                          copyToClipboard(
+                            `curl -X POST "${getApiBaseUrl()}/api/v1/memories/search?project_id=${currentProject.id}" \\\n  -H "Authorization: Bearer YOUR_API_KEY" \\\n  -H "Content-Type: application/json" \\\n  -d '{\n    "query": "用户住在哪里",\n    "agent_id": "${guideAgent.agent_id}",\n    "user_id": "${currentUserId}",\n    "limit": 10,\n    "threshold": 0.5\n  }'`,
                             "rest-search"
                           )
                         }
@@ -755,7 +835,7 @@ export default function AgentsPage() {
                       </Button>
                     </div>
 
-                    <h4 className="text-sm font-semibold">3. 获取全部记忆</h4>
+                    <h4 className="text-sm font-semibold">5. 获取全部记忆</h4>
                     <div className="relative">
                       <pre className="rounded-md border bg-muted/50 p-4 text-xs overflow-x-auto whitespace-pre">
 {`curl "${getApiBaseUrl()}/api/v1/memories\\
@@ -782,9 +862,32 @@ export default function AgentsPage() {
                       </Button>
                     </div>
 
+                    <h4 className="text-sm font-semibold">参数说明</h4>
+                    <div className="rounded-md border overflow-hidden">
+                      <table className="w-full text-xs">
+                        <thead className="bg-muted/50">
+                          <tr>
+                            <th className="px-3 py-1.5 text-left font-medium">参数</th>
+                            <th className="px-3 py-1.5 text-left font-medium">说明</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y">
+                          <tr><td className="px-3 py-1.5 font-mono">messages</td><td className="px-3 py-1.5 text-muted-foreground">对话消息列表或纯文本字符串</td></tr>
+                          <tr><td className="px-3 py-1.5 font-mono">user_id</td><td className="px-3 py-1.5 text-muted-foreground">终端用户 ID，用于隔离不同用户的记忆</td></tr>
+                          <tr><td className="px-3 py-1.5 font-mono">agent_id</td><td className="px-3 py-1.5 text-muted-foreground">Agent ID</td></tr>
+                          <tr><td className="px-3 py-1.5 font-mono">infer</td><td className="px-3 py-1.5 text-muted-foreground">默认 true；设为 false 直接存储原始内容，跳过 LLM 提取</td></tr>
+                          <tr><td className="px-3 py-1.5 font-mono">prompt</td><td className="px-3 py-1.5 text-muted-foreground">自定义记忆提取提示词，覆盖默认提取逻辑</td></tr>
+                          <tr><td className="px-3 py-1.5 font-mono">memory_type</td><td className="px-3 py-1.5 text-muted-foreground">设为 <code className="px-1 bg-muted rounded">"procedural_memory"</code> 创建程序性记忆（Agent 行为规则）</td></tr>
+                          <tr><td className="px-3 py-1.5 font-mono">source_app</td><td className="px-3 py-1.5 text-muted-foreground">来源应用标识，便于追踪记忆来源</td></tr>
+                          <tr><td className="px-3 py-1.5 font-mono">threshold</td><td className="px-3 py-1.5 text-muted-foreground">搜索时的最低相似度分数过滤（0-1）</td></tr>
+                          <tr><td className="px-3 py-1.5 font-mono">metadata</td><td className="px-3 py-1.5 text-muted-foreground">自定义键值对元数据，随记忆一起存储</td></tr>
+                        </tbody>
+                      </table>
+                    </div>
+
                     <div className="rounded-md bg-amber-50 dark:bg-amber-950/30 p-3 text-xs text-amber-700 dark:text-amber-300">
                       <strong>注意:</strong> 请将 <code>YOUR_API_KEY</code> 替换为在「设置 &rarr; API Key」页面中创建的 API Key。
-                      API Key 拥有与创建者相同的项目访问权限。
+                      认证方式为 <code>Authorization: Bearer YOUR_API_KEY</code> Header。
                     </div>
                   </div>
                 </TabsContent>
@@ -806,6 +909,7 @@ export default function AgentsPage() {
   -H "Content-Type: application/json" \\
   -d '{
     "url": "https://your-server.com/webhook",
+    "format": "generic",
     "events": ["memory.created",
       "memory.updated", "memory.deleted"]
   }'`}
@@ -816,7 +920,7 @@ export default function AgentsPage() {
                         className="absolute top-2 right-2 h-6 w-6"
                         onClick={() =>
                           copyToClipboard(
-                            `curl -X POST "${getApiBaseUrl()}/api/v1/webhooks?project_id=${currentProject.id}" \\\n  -H "Authorization: Bearer YOUR_API_KEY" \\\n  -H "Content-Type: application/json" \\\n  -d '{\n    "url": "https://your-server.com/webhook/memvault",\n    "events": ["memory.created", "memory.updated", "memory.deleted"]\n  }'`,
+                            `curl -X POST "${getApiBaseUrl()}/api/v1/webhooks?project_id=${currentProject.id}" \\\n  -H "Authorization: Bearer YOUR_API_KEY" \\\n  -H "Content-Type: application/json" \\\n  -d '{\n    "url": "https://your-server.com/webhook/memvault",\n    "format": "generic",\n    "events": ["memory.created", "memory.updated", "memory.deleted"]\n  }'`,
                             "webhook-register"
                           )
                         }
@@ -839,13 +943,40 @@ export default function AgentsPage() {
     "memory_id": "mem-xxx",
     "content": "记忆内容",
     "agent_id": "${guideAgent.agent_id}",
-    "user_id": "user-123",
+    "user_id": "${currentUserId}",
     "memory_type": "semantic"
   }
 }`}
                     </pre>
 
-                    <h4 className="text-sm font-semibold mt-4">3. 支持的事件类型</h4>
+                    <h4 className="text-sm font-semibold mt-4">3. 支持的推送格式</h4>
+                    <p className="text-xs text-muted-foreground mb-2">
+                      通过 <code className="px-1 py-0.5 bg-muted rounded">format</code> 字段指定推送格式，MemVault 会自动将载荷转换为对应平台要求的格式：
+                    </p>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                      <div className="rounded-md border p-2">
+                        <Badge variant="secondary" className="text-xs">generic</Badge>
+                        <p className="text-xs text-muted-foreground mt-1">通用 JSON（默认，含 HMAC 签名）</p>
+                      </div>
+                      <div className="rounded-md border p-2">
+                        <Badge variant="secondary" className="text-xs">wecom</Badge>
+                        <p className="text-xs text-muted-foreground mt-1">企业微信机器人</p>
+                      </div>
+                      <div className="rounded-md border p-2">
+                        <Badge variant="secondary" className="text-xs">dingtalk</Badge>
+                        <p className="text-xs text-muted-foreground mt-1">钉钉机器人</p>
+                      </div>
+                      <div className="rounded-md border p-2">
+                        <Badge variant="secondary" className="text-xs">feishu</Badge>
+                        <p className="text-xs text-muted-foreground mt-1">飞书机器人</p>
+                      </div>
+                      <div className="rounded-md border p-2">
+                        <Badge variant="secondary" className="text-xs">slack</Badge>
+                        <p className="text-xs text-muted-foreground mt-1">Slack Incoming Webhook</p>
+                      </div>
+                    </div>
+
+                    <h4 className="text-sm font-semibold mt-4">4. 支持的事件类型</h4>
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                       <div className="rounded-md border p-2">
                         <Badge variant="secondary" className="text-xs">memory.created</Badge>
@@ -893,10 +1024,12 @@ export default function AgentsPage() {
       "apiKey": "在此替换你的 API Key",
       "projectId": "${currentProject?.id || ''}",
       "agentId": "${guideAgent?.agent_id || ''}",
-      "userId": "default",
+      "userId": "${currentUserId}",
       "autoRecall": true,
       "autoCapture": true,
-      "topK": 5
+      "topK": 5,
+      "sourceApp": "openclaw",
+      "threshold": 0.5
     }
   }
 }
@@ -909,7 +1042,7 @@ export default function AgentsPage() {
                               className="absolute top-2 right-2 h-7 gap-1 text-green-700 hover:text-green-900 hover:bg-green-100 dark:text-green-300 dark:hover:bg-green-900"
                               onClick={() =>
                                 copyToClipboard(
-                                  `请帮我安装并配置 MemVault 记忆插件。\n\n1. 运行以下命令安装插件：\n   openclaw plugins install @rigouu0407/openclaw-plugin\n\n2. 在 openclaw.json 的 plugins.entries 中添加以下配置：\n{\n  "memvault": {\n    "enabled": true,\n    "config": {\n      "apiBaseUrl": "${getApiBaseUrl()}",\n      "apiKey": "在此替换你的 API Key",\n      "projectId": "${currentProject?.id || ''}",\n      "agentId": "${guideAgent?.agent_id || ''}",\n      "userId": "default",\n      "autoRecall": true,\n      "autoCapture": true,\n      "topK": 5\n    }\n  }\n}\n\n安装完成后，请验证插件是否正常加载。`,
+                                  `请帮我安装并配置 MemVault 记忆插件。\n\n1. 运行以下命令安装插件：\n   openclaw plugins install @rigouu0407/openclaw-plugin\n\n2. 在 openclaw.json 的 plugins.entries 中添加以下配置：\n{\n  "memvault": {\n    "enabled": true,\n    "config": {\n      "apiBaseUrl": "${getApiBaseUrl()}",\n      "apiKey": "在此替换你的 API Key",\n      "projectId": "${currentProject?.id || ''}",\n      "agentId": "${guideAgent?.agent_id || ''}",\n      "userId": "${currentUserId}",\n      "autoRecall": true,\n      "autoCapture": true,\n      "topK": 5,\n      "sourceApp": "openclaw",\n      "threshold": 0.5\n    }\n  }\n}\n\n安装完成后，请验证插件是否正常加载。`,
                                   "oc-prompt"
                                 )
                               }
@@ -978,10 +1111,12 @@ openclaw plugins install -l ./openclaw-plugin.tgz`}
       "apiKey": "YOUR_API_KEY",
       "projectId": "${currentProject.id}",
       "agentId": "${guideAgent.agent_id}",
-      "userId": "default",
+      "userId": "${currentUserId}",
       "autoRecall": true,
       "autoCapture": true,
-      "topK": 5
+      "topK": 5,
+      "sourceApp": "openclaw",
+      "threshold": 0.5
     }
   }
 }`}
@@ -1000,10 +1135,12 @@ openclaw plugins install -l ./openclaw-plugin.tgz`}
                                   apiKey: "YOUR_API_KEY",
                                   projectId: currentProject.id,
                                   agentId: guideAgent.agent_id,
-                                  userId: "default",
+                                  userId: currentUserId,
                                   autoRecall: true,
                                   autoCapture: true,
                                   topK: 5,
+                                  sourceApp: "openclaw",
+                                  threshold: 0.5,
                                 },
                               },
                             }, null, 2),
@@ -1033,9 +1170,11 @@ openclaw plugins install -l ./openclaw-plugin.tgz`}
                           <tr><td className="px-3 py-1.5 font-mono">apiKey</td><td className="px-3 py-1.5 text-muted-foreground">在「设置 &rarr; API Key」中创建</td></tr>
                           <tr><td className="px-3 py-1.5 font-mono">projectId</td><td className="px-3 py-1.5 text-muted-foreground">当前项目 ID（已自动填入）</td></tr>
                           <tr><td className="px-3 py-1.5 font-mono">agentId</td><td className="px-3 py-1.5 text-muted-foreground">Agent ID（已自动填入）</td></tr>
-                          <tr><td className="px-3 py-1.5 font-mono">autoRecall</td><td className="px-3 py-1.5 text-muted-foreground">对话前自动注入相关记忆</td></tr>
-                          <tr><td className="px-3 py-1.5 font-mono">autoCapture</td><td className="px-3 py-1.5 text-muted-foreground">对话后自动提取并存储记忆</td></tr>
-                          <tr><td className="px-3 py-1.5 font-mono">topK</td><td className="px-3 py-1.5 text-muted-foreground">每轮最多召回的记忆条数</td></tr>
+                          <tr><td className="px-3 py-1.5 font-mono">autoRecall</td><td className="px-3 py-1.5 text-muted-foreground">对话前自动注入相关记忆（默认 true）</td></tr>
+                          <tr><td className="px-3 py-1.5 font-mono">autoCapture</td><td className="px-3 py-1.5 text-muted-foreground">对话后自动提取并存储记忆（默认 true）</td></tr>
+                          <tr><td className="px-3 py-1.5 font-mono">topK</td><td className="px-3 py-1.5 text-muted-foreground">每轮最多召回的记忆条数（默认 5）</td></tr>
+                          <tr><td className="px-3 py-1.5 font-mono">sourceApp</td><td className="px-3 py-1.5 text-muted-foreground">来源应用标识，用于追踪记忆来源</td></tr>
+                          <tr><td className="px-3 py-1.5 font-mono">threshold</td><td className="px-3 py-1.5 text-muted-foreground">搜索最低相似度分数（0-1），过滤低质量结果</td></tr>
                         </tbody>
                       </table>
                     </div>
@@ -1051,7 +1190,7 @@ openclaw plugins install -l ./openclaw-plugin.tgz`}
                       </div>
                       <div className="rounded-md border p-2">
                         <Badge variant="secondary" className="text-xs font-mono">memory_store</Badge>
-                        <p className="text-xs text-muted-foreground mt-1">显式存储一条记忆</p>
+                        <p className="text-xs text-muted-foreground mt-1">显式存储一条记忆（支持程序性记忆）</p>
                       </div>
                       <div className="rounded-md border p-2">
                         <Badge variant="secondary" className="text-xs font-mono">memory_list</Badge>

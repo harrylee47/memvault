@@ -1,4 +1,5 @@
 import json
+import time
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -6,6 +7,7 @@ from sqlalchemy import select, func, or_, and_
 from app.database import get_db
 from app.dependencies import get_current_user, AuthContext
 from app.models.memory import Memory, MemoryState, MemoryType
+from app.models.request_log import RequestLog
 from app.schemas.memory import (
     MemoryAdd, MemoryUpdate, MemorySearch,
     MemoryResponse, MemoryListResponse, MemorySearchResponse,
@@ -21,6 +23,36 @@ import io
 import csv
 from datetime import datetime
 
+
+async def _log_request(
+    db: AsyncSession,
+    project_id: str,
+    method: str,
+    endpoint: str,
+    status_code: int = 200,
+    has_results: bool = True,
+    agent_id: str | None = None,
+    user_id: str | None = None,
+    duration_ms: int | None = None,
+    request_body: dict | None = None,
+    response_summary: dict | None = None,
+):
+    """记录 API 请求日志"""
+    log = RequestLog(
+        project_id=project_id,
+        method=method,
+        endpoint=endpoint,
+        status_code=status_code,
+        has_results=has_results,
+        agent_id=agent_id,
+        user_id=user_id,
+        duration_ms=duration_ms,
+        request_body=request_body,
+        response_summary=response_summary,
+    )
+    db.add(log)
+    await db.flush()
+
 router = APIRouter(prefix="/memories", tags=["记忆"])
 
 
@@ -32,6 +64,20 @@ async def create_memory(
     db: AsyncSession = Depends(get_db),
 ):
     """添加记忆 - mem0.add()"""
+    from app.models.project import Project
+    from app.services.plan_service import check_memory_limit, check_request_limit
+
+    t0 = time.time()
+
+    # 获取项目所属组织并检查记忆限制和请求限制
+    proj_result = await db.execute(select(Project).where(Project.id == project_id))
+    project = proj_result.scalar_one_or_none()
+    if project:
+        org_proj_result = await db.execute(select(Project.id).where(Project.org_id == project.org_id))
+        org_project_ids = [row[0] for row in org_proj_result.all()]
+        await check_memory_limit(project.org_id, org_project_ids, db)
+        await check_request_limit(project.org_id, org_project_ids, db)
+
     result = await add_memory(
         project_id=project_id,
         messages=data.messages,
@@ -40,8 +86,21 @@ async def create_memory(
         run_id=data.run_id,
         metadata=data.metadata,
         db=db,
+        source_app=data.source_app,
+        infer=data.infer,
+        prompt=data.prompt,
+        memory_type=data.memory_type,
     )
+    duration = int((time.time() - t0) * 1000)
     await log_audit(db, project_id, auth.user_id, "create", "memory", details={"count": len(result)})
+    await _log_request(
+        db, project_id, "ADD", "/memories",
+        has_results=len(result) > 0,
+        agent_id=data.agent_id, user_id=data.user_id,
+        duration_ms=duration,
+        request_body={"messages_count": len(data.messages) if isinstance(data.messages, list) else 1, "user_id": data.user_id, "agent_id": data.agent_id},
+        response_summary={"count": len(result)},
+    )
     # Webhook 通知
     for item in result:
         await dispatch_webhook_event(db, project_id, "memory.created", item)
@@ -128,10 +187,17 @@ async def update_single_memory(
     db: AsyncSession = Depends(get_db),
 ):
     """更新记忆 - mem0.update()"""
+    t0 = time.time()
     memory = await update_memory(project_id, memory_id, data.content, db)
     if not memory:
         raise HTTPException(status_code=404, detail="Memory not found")
+    duration = int((time.time() - t0) * 1000)
     await log_audit(db, project_id, auth.user_id, "update", "memory", memory_id)
+    await _log_request(
+        db, project_id, "UPDATE", f"/memories/{memory_id}",
+        duration_ms=duration,
+        response_summary={"memory_id": memory_id},
+    )
     await dispatch_webhook_event(db, project_id, "memory.updated", {
         "id": memory_id, "content": data.content,
     })
@@ -146,10 +212,17 @@ async def delete_single_memory(
     db: AsyncSession = Depends(get_db),
 ):
     """删除记忆 - mem0.delete()"""
+    t0 = time.time()
     success = await delete_memory(project_id, memory_id, db)
     if not success:
         raise HTTPException(status_code=404, detail="Memory not found")
+    duration = int((time.time() - t0) * 1000)
     await log_audit(db, project_id, auth.user_id, "delete", "memory", memory_id)
+    await _log_request(
+        db, project_id, "DELETE", f"/memories/{memory_id}",
+        duration_ms=duration,
+        response_summary={"memory_id": memory_id},
+    )
     await dispatch_webhook_event(db, project_id, "memory.deleted", {"id": memory_id})
 
 
@@ -161,6 +234,18 @@ async def search(
     db: AsyncSession = Depends(get_db),
 ):
     """搜索记忆 - mem0.search() 含高级过滤"""
+    from app.models.project import Project
+    from app.services.plan_service import check_request_limit
+
+    # 检查请求限制
+    proj_result = await db.execute(select(Project).where(Project.id == project_id))
+    project = proj_result.scalar_one_or_none()
+    if project:
+        org_proj_result = await db.execute(select(Project.id).where(Project.org_id == project.org_id))
+        org_project_ids = [row[0] for row in org_proj_result.all()]
+        await check_request_limit(project.org_id, org_project_ids, db)
+
+    t0 = time.time()
     results = await search_memories(
         project_id=project_id,
         query=data.query,
@@ -170,8 +255,18 @@ async def search(
         limit=data.limit,
         filters=data.filters,
         db=db,
+        threshold=data.threshold,
     )
+    duration = int((time.time() - t0) * 1000)
     await log_audit(db, project_id, auth.user_id, "search", "memory", details={"query": data.query})
+    await _log_request(
+        db, project_id, "SEARCH", "/memories/search",
+        has_results=len(results) > 0,
+        agent_id=data.agent_id, user_id=data.user_id,
+        duration_ms=duration,
+        request_body={"query": data.query, "limit": data.limit},
+        response_summary={"count": len(results)},
+    )
     return MemorySearchResponse(
         results=[MemorySearchResult(**r) for r in results],
         total=len(results),
@@ -260,6 +355,18 @@ async def import_memories(
     db: AsyncSession = Depends(get_db),
 ):
     """导入记忆"""
+    from app.models.project import Project
+    from app.services.plan_service import check_memory_limit, check_request_limit
+
+    # 检查记忆数量和请求限制
+    proj_result = await db.execute(select(Project).where(Project.id == project_id))
+    project_obj = proj_result.scalar_one_or_none()
+    if project_obj:
+        org_proj_result = await db.execute(select(Project.id).where(Project.org_id == project_obj.org_id))
+        org_project_ids = [row[0] for row in org_proj_result.all()]
+        await check_memory_limit(project_obj.org_id, org_project_ids, db)
+        await check_request_limit(project_obj.org_id, org_project_ids, db)
+
     imported = 0
     for item in data.memories:
         content = item.get("content", "")

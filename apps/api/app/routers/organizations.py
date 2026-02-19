@@ -1,5 +1,6 @@
 """组织管理路由"""
 import uuid
+from datetime import datetime, timedelta
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
@@ -7,9 +8,12 @@ from app.database import get_db
 from app.dependencies import get_current_user, AuthContext
 from app.models.organization import Organization, OrgMember, OrgRole
 from app.models.user import User
+from app.models.plan import Plan
+from app.models.redemption_code import RedemptionCode, RedemptionLog
 from app.schemas.organization import (
     OrgCreate, OrgUpdate, OrgResponse, OrgMemberResponse, OrgMemberAdd,
 )
+from app.schemas.redemption_code import RedeemRequest
 
 router = APIRouter(prefix="/organizations", tags=["组织"])
 
@@ -116,6 +120,13 @@ async def delete_organization(
     )
     if not member_result.scalar_one_or_none():
         raise HTTPException(status_code=403, detail="Only owner can delete organization")
+
+    # 检查用户是否只剩一个组织
+    user_org_count = (await db.execute(
+        select(func.count()).select_from(OrgMember).where(OrgMember.user_id == auth.user_id)
+    )).scalar() or 0
+    if user_org_count <= 1:
+        raise HTTPException(status_code=400, detail="Cannot delete last organization. At least one organization is required.")
 
     await db.delete(org)
 
@@ -283,14 +294,6 @@ async def remove_member(
 
 # ---- 计费 / 计划 ----
 
-PLAN_LIMITS = {
-    "free": {"memories": 10000, "requests": 1000, "projects": 1},
-    "starter": {"memories": 50000, "requests": 5000, "projects": 3},
-    "pro": {"memories": -1, "requests": 50000, "projects": -1},
-    "enterprise": {"memories": -1, "requests": -1, "projects": -1},
-}
-
-
 @router.get("/{org_id}/billing")
 async def get_billing(
     org_id: str,
@@ -301,7 +304,7 @@ async def get_billing(
     from app.models.project import Project
     from app.models.memory import Memory, MemoryState
     from app.models.request_log import RequestLog
-    from datetime import datetime, timedelta
+    from app.services.plan_service import get_org_plan_limits
 
     result = await db.execute(select(Organization).where(Organization.id == org_id))
     org = result.scalar_one_or_none()
@@ -336,11 +339,13 @@ async def get_billing(
         )
         request_count = req_result.scalar() or 0
 
-    plan = org.plan or "free"
-    limits = PLAN_LIMITS.get(plan, PLAN_LIMITS["free"])
+    # 从 plans 表读取 limits
+    limits = await get_org_plan_limits(org_id, db)
 
     return {
-        "plan": plan,
+        "plan": org.plan or "free",
+        "plan_expires_at": org.plan_expires_at.isoformat() if org.plan_expires_at else None,
+        "plan_activated_at": org.plan_activated_at.isoformat() if org.plan_activated_at else None,
         "billing_period_start": month_start.isoformat(),
         "billing_period_end": (month_start + timedelta(days=32)).replace(day=1).isoformat(),
         "usage": {
@@ -352,19 +357,15 @@ async def get_billing(
     }
 
 
-@router.put("/{org_id}/plan")
-async def update_plan(
+@router.post("/{org_id}/redeem")
+async def redeem_code(
     org_id: str,
-    data: dict,
+    data: RedeemRequest,
     auth: AuthContext = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """更新组织计划（仅 Owner/Admin）"""
-    result = await db.execute(select(Organization).where(Organization.id == org_id))
-    org = result.scalar_one_or_none()
-    if not org:
-        raise HTTPException(status_code=404, detail="Organization not found")
-
+    """兑换码兑换 plan"""
+    # 验证组织成员权限
     member_result = await db.execute(
         select(OrgMember).where(
             OrgMember.org_id == org_id, OrgMember.user_id == auth.user_id,
@@ -374,10 +375,70 @@ async def update_plan(
     if not member_result.scalar_one_or_none():
         raise HTTPException(status_code=403, detail="Insufficient permissions")
 
-    new_plan = data.get("plan", "free")
-    valid_plans = list(PLAN_LIMITS.keys())
-    if new_plan not in valid_plans:
-        raise HTTPException(status_code=400, detail=f"Invalid plan: {new_plan}")
+    # 查找兑换码
+    code_result = await db.execute(
+        select(RedemptionCode).where(RedemptionCode.code == data.code.strip().upper())
+    )
+    redemption_code = code_result.scalar_one_or_none()
+    if not redemption_code:
+        raise HTTPException(status_code=404, detail="Invalid redemption code")
 
-    org.plan = new_plan
-    return {"plan": org.plan}
+    # 检查兑换码是否有效
+    if not redemption_code.is_active:
+        raise HTTPException(status_code=400, detail="Redemption code is inactive")
+
+    if redemption_code.expires_at and redemption_code.expires_at < datetime.utcnow():
+        raise HTTPException(status_code=400, detail="Redemption code has expired")
+
+    if redemption_code.used_count >= redemption_code.max_uses:
+        raise HTTPException(status_code=400, detail="Redemption code has been fully used")
+
+    # 获取关联的 plan
+    plan_result = await db.execute(select(Plan).where(Plan.id == redemption_code.plan_id))
+    plan = plan_result.scalar_one_or_none()
+    if not plan or not plan.is_active:
+        raise HTTPException(status_code=400, detail="Associated plan is not available")
+
+    # 获取组织
+    org_result = await db.execute(select(Organization).where(Organization.id == org_id))
+    org = org_result.scalar_one_or_none()
+    if not org:
+        raise HTTPException(status_code=404, detail="Organization not found")
+
+    # 计算到期时间
+    now = datetime.utcnow()
+    if org.plan == plan.slug and org.plan_expires_at and org.plan_expires_at > now:
+        # 同 plan 叠加天数
+        new_expires_at = org.plan_expires_at + timedelta(days=redemption_code.duration_days)
+    else:
+        new_expires_at = now + timedelta(days=redemption_code.duration_days)
+
+    # 更新组织 plan
+    org.plan = plan.slug
+    org.plan_activated_at = now
+    org.plan_expires_at = new_expires_at
+
+    # 原子自增 used_count
+    redemption_code.used_count = redemption_code.used_count + 1
+
+    # 记录兑换日志
+    log = RedemptionLog(
+        id=str(uuid.uuid4()),
+        code_id=redemption_code.id,
+        org_id=org_id,
+        user_id=auth.user_id,
+        plan_slug=plan.slug,
+        duration_days=redemption_code.duration_days,
+        activated_at=now,
+        expires_at=new_expires_at,
+    )
+    db.add(log)
+    await db.flush()
+
+    return {
+        "plan": plan.slug,
+        "plan_name": plan.name,
+        "duration_days": redemption_code.duration_days,
+        "activated_at": now.isoformat(),
+        "expires_at": new_expires_at.isoformat(),
+    }

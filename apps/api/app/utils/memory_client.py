@@ -57,6 +57,12 @@ def build_mem0_config(project_id: str, project_config: dict | None = None) -> di
         config["llm"]["config"]["model"] = llm.get("model", config["llm"]["config"]["model"])
         if llm.get("api_key"):
             config["llm"]["config"]["api_key"] = llm["api_key"]
+        if llm.get("api_base_url"):
+            provider = config["llm"]["provider"]
+            if provider == "ollama":
+                config["llm"]["config"]["ollama_base_url"] = llm["api_base_url"]
+            else:
+                config["llm"]["config"]["openai_base_url"] = llm["api_base_url"]
         if "temperature" in llm:
             config["llm"]["config"]["temperature"] = llm["temperature"]
         if "max_tokens" in llm:
@@ -69,6 +75,12 @@ def build_mem0_config(project_id: str, project_config: dict | None = None) -> di
         config["embedder"]["config"]["model"] = emb.get("model", config["embedder"]["config"]["model"])
         if emb.get("api_key"):
             config["embedder"]["config"]["api_key"] = emb["api_key"]
+        if emb.get("api_base_url"):
+            emb_provider = config["embedder"]["provider"]
+            if emb_provider == "ollama":
+                config["embedder"]["config"]["ollama_base_url"] = emb["api_base_url"]
+            else:
+                config["embedder"]["config"]["openai_base_url"] = emb["api_base_url"]
 
     # 合并项目级 Vector Store 配置
     if "vector_store" in project_config and project_config["vector_store"]:

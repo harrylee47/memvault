@@ -3,11 +3,15 @@ from datetime import datetime
 
 
 class MemoryAdd(BaseModel):
-    messages: list[dict]  # [{"role": "user", "content": "..."}]
+    messages: list[dict] | str  # [{"role": "user", "content": "..."}] 或纯文本
     user_id: str | None = None
     agent_id: str | None = None
     run_id: str | None = None
     metadata: dict | None = None
+    source_app: str | None = None
+    infer: bool = True  # False 时直接存储原始内容，不经过 LLM 提取
+    prompt: str | None = None  # 自定义记忆提取提示词
+    memory_type: str | None = None  # "procedural_memory" 创建程序性记忆（需配合 agent_id）
 
 
 class MemoryUpdate(BaseModel):

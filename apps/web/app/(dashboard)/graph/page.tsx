@@ -114,6 +114,59 @@ export default function GraphPage() {
     panX: 0,
     panY: 0,
   });
+  const frameCountRef = useRef<number>(0);
+  const hasFittedRef = useRef<boolean>(false);
+
+  // ============================================================
+  // Canvas CSS 尺寸辅助
+  // ============================================================
+
+  const getCanvasSize = useCallback(() => {
+    const container = containerRef.current;
+    if (container) {
+      const rect = container.getBoundingClientRect();
+      return { w: rect.width, h: rect.height };
+    }
+    return { w: 800, h: 600 };
+  }, []);
+
+  // ============================================================
+  // 自动适配视图
+  // ============================================================
+
+  const fitToView = useCallback(() => {
+    const nodes = simNodesRef.current;
+    if (nodes.length === 0) return;
+
+    const { w, h } = getCanvasSize();
+
+    // 计算所有节点的包围盒
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (const node of nodes) {
+      minX = Math.min(minX, node.x - node.radius);
+      minY = Math.min(minY, node.y - node.radius);
+      maxX = Math.max(maxX, node.x + node.radius);
+      maxY = Math.max(maxY, node.y + node.radius);
+    }
+
+    const graphW = maxX - minX;
+    const graphH = maxY - minY;
+    if (graphW < 1 || graphH < 1) return;
+
+    const padding = 60;
+    const scaleX = (w - padding * 2) / graphW;
+    const scaleY = (h - padding * 2) / graphH;
+    const zoom = Math.min(scaleX, scaleY, 2); // 最大不超过 2x
+
+    const centerX = (minX + maxX) / 2;
+    const centerY = (minY + maxY) / 2;
+
+    zoomRef.current = zoom;
+    panRef.current = {
+      x: w / 2 - centerX * zoom,
+      y: h / 2 - centerY * zoom,
+    };
+  }, [getCanvasSize]);
 
   // ============================================================
   // 数据加载
@@ -180,10 +233,10 @@ export default function GraphPage() {
 
     const maxConn = Math.max(1, ...Object.values(connectionCount));
 
-    // 创建仿真节点，随机初始位置
-    const canvas = canvasRef.current;
-    const cx = canvas ? canvas.width / 2 : 400;
-    const cy = canvas ? canvas.height / 2 : 300;
+    // 创建仿真节点，随机初始位置（使用 CSS 像素）
+    const { w: canvasW, h: canvasH } = getCanvasSize();
+    const cx = canvasW / 2;
+    const cy = canvasH / 2;
     const spread = Math.min(cx, cy) * 0.6;
 
     const simNodes: SimNode[] = nodes.map((n) => {
@@ -226,10 +279,12 @@ export default function GraphPage() {
     simNodesRef.current = simNodes;
     simEdgesRef.current = simEdges;
 
-    // 重置视角
+    // 重置视角和自动适配标志
     panRef.current = { x: 0, y: 0 };
     zoomRef.current = 1;
-  }, [graphData]);
+    frameCountRef.current = 0;
+    hasFittedRef.current = false;
+  }, [graphData, getCanvasSize]);
 
   // ============================================================
   // 力导向布局算法
@@ -240,9 +295,9 @@ export default function GraphPage() {
     const edges = simEdgesRef.current;
     if (nodes.length === 0) return;
 
-    const canvas = canvasRef.current;
-    const cx = canvas ? canvas.width / 2 : 400;
-    const cy = canvas ? canvas.height / 2 : 300;
+    const { w, h } = getCanvasSize();
+    const cx = w / 2;
+    const cy = h / 2;
 
     for (let step = 0; step < SIMULATION_STEPS_PER_FRAME; step++) {
       // 斥力（节点间库伦力）
@@ -321,7 +376,7 @@ export default function GraphPage() {
         node.y += node.vy;
       }
     }
-  }, []);
+  }, [getCanvasSize]);
 
   // ============================================================
   // Canvas 渲染
@@ -340,8 +395,7 @@ export default function GraphPage() {
     const zoom = zoomRef.current;
     const hoverNode = hoverNodeRef.current;
 
-    const w = canvas.width;
-    const h = canvas.height;
+    const { w, h } = getCanvasSize();
 
     // 清空
     ctx.clearRect(0, 0, w, h);
@@ -555,7 +609,7 @@ export default function GraphPage() {
     ctx.textAlign = "left";
     ctx.textBaseline = "bottom";
     ctx.fillText(`Zoom: ${(zoom * 100).toFixed(0)}%`, 12, h - 12);
-  }, []);
+  }, [getCanvasSize]);
 
   // ============================================================
   // 动画循环
@@ -566,6 +620,14 @@ export default function GraphPage() {
 
     const loop = () => {
       simulate();
+      frameCountRef.current++;
+
+      // 在仿真稳定后自动适配视图（第 60 帧）
+      if (!hasFittedRef.current && frameCountRef.current === 60) {
+        fitToView();
+        hasFittedRef.current = true;
+      }
+
       render();
       animationRef.current = requestAnimationFrame(loop);
     };
@@ -577,7 +639,7 @@ export default function GraphPage() {
         cancelAnimationFrame(animationRef.current);
       }
     };
-  }, [graphData, simulate, render]);
+  }, [graphData, simulate, render, fitToView]);
 
   // ============================================================
   // Canvas 尺寸管理

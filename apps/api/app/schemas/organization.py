@@ -45,6 +45,8 @@ class OrgResponse(BaseModel):
     name: str
     slug: str
     plan: str
+    plan_expires_at: datetime | None = None
+    plan_activated_at: datetime | None = None
     created_at: datetime
 
     class Config:

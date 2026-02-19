@@ -1,6 +1,8 @@
+import copy
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from sqlalchemy.orm.attributes import flag_modified
 from app.database import get_db
 from app.dependencies import get_current_user, AuthContext
 from app.models.project import ProjectConfig
@@ -57,24 +59,41 @@ async def update_config(
 ):
     """更新完整项目配置"""
     config = await _get_config(project_id, db)
-    mem0_config = config.mem0_config or {}
+    mem0_config = copy.deepcopy(config.mem0_config or {})
 
     if data.llm is not None:
-        mem0_config["llm"] = data.llm.model_dump(exclude_none=True)
+        new_llm = data.llm.model_dump(exclude_none=True)
+        # 合并: 保留已有字段，用新值覆盖
+        existing_llm = mem0_config.get("llm", {})
+        existing_llm.update(new_llm)
+        mem0_config["llm"] = existing_llm
     if data.embedder is not None:
-        mem0_config["embedder"] = data.embedder.model_dump(exclude_none=True)
+        new_emb = data.embedder.model_dump(exclude_none=True)
+        existing_emb = mem0_config.get("embedder", {})
+        existing_emb.update(new_emb)
+        mem0_config["embedder"] = existing_emb
     if data.vector_store is not None:
-        mem0_config["vector_store"] = data.vector_store.model_dump(exclude_none=True)
+        new_vs = data.vector_store.model_dump(exclude_none=True)
+        existing_vs = mem0_config.get("vector_store", {})
+        existing_vs.update(new_vs)
+        mem0_config["vector_store"] = existing_vs
     if data.graph_store is not None:
-        mem0_config["graph_store"] = data.graph_store.model_dump(exclude_none=True)
+        new_gs = data.graph_store.model_dump(exclude_none=True)
+        existing_gs = mem0_config.get("graph_store", {})
+        existing_gs.update(new_gs)
+        mem0_config["graph_store"] = existing_gs
     if data.reranker is not None:
-        mem0_config["reranker"] = data.reranker.model_dump(exclude_none=True)
+        new_rr = data.reranker.model_dump(exclude_none=True)
+        existing_rr = mem0_config.get("reranker", {})
+        existing_rr.update(new_rr)
+        mem0_config["reranker"] = existing_rr
     if data.custom_instructions is not None:
         config.custom_instructions = data.custom_instructions
     if data.max_memories is not None:
         config.max_memories = data.max_memories
 
     config.mem0_config = mem0_config
+    flag_modified(config, "mem0_config")
     # 使客户端缓存失效，下次访问重建
     invalidate_client(project_id)
     return _config_to_response(config)
@@ -89,9 +108,12 @@ async def update_llm_config(
 ):
     """更新 LLM 配置"""
     config = await _get_config(project_id, db)
-    mem0_config = config.mem0_config or {}
-    mem0_config["llm"] = data.model_dump(exclude_none=True)
+    mem0_config = copy.deepcopy(config.mem0_config or {})
+    existing = mem0_config.get("llm", {})
+    existing.update(data.model_dump(exclude_none=True))
+    mem0_config["llm"] = existing
     config.mem0_config = mem0_config
+    flag_modified(config, "mem0_config")
     invalidate_client(project_id)
     return _config_to_response(config)
 
@@ -105,9 +127,12 @@ async def update_embedder_config(
 ):
     """更新嵌入模型配置"""
     config = await _get_config(project_id, db)
-    mem0_config = config.mem0_config or {}
-    mem0_config["embedder"] = data.model_dump(exclude_none=True)
+    mem0_config = copy.deepcopy(config.mem0_config or {})
+    existing = mem0_config.get("embedder", {})
+    existing.update(data.model_dump(exclude_none=True))
+    mem0_config["embedder"] = existing
     config.mem0_config = mem0_config
+    flag_modified(config, "mem0_config")
     invalidate_client(project_id)
     return _config_to_response(config)
 
@@ -121,9 +146,12 @@ async def update_vector_store_config(
 ):
     """更新向量存储配置"""
     config = await _get_config(project_id, db)
-    mem0_config = config.mem0_config or {}
-    mem0_config["vector_store"] = data.model_dump(exclude_none=True)
+    mem0_config = copy.deepcopy(config.mem0_config or {})
+    existing = mem0_config.get("vector_store", {})
+    existing.update(data.model_dump(exclude_none=True))
+    mem0_config["vector_store"] = existing
     config.mem0_config = mem0_config
+    flag_modified(config, "mem0_config")
     invalidate_client(project_id)
     return _config_to_response(config)
 
@@ -137,9 +165,12 @@ async def update_graph_store_config(
 ):
     """更新图存储配置"""
     config = await _get_config(project_id, db)
-    mem0_config = config.mem0_config or {}
-    mem0_config["graph_store"] = data.model_dump(exclude_none=True)
+    mem0_config = copy.deepcopy(config.mem0_config or {})
+    existing = mem0_config.get("graph_store", {})
+    existing.update(data.model_dump(exclude_none=True))
+    mem0_config["graph_store"] = existing
     config.mem0_config = mem0_config
+    flag_modified(config, "mem0_config")
     invalidate_client(project_id)
     return _config_to_response(config)
 
@@ -153,8 +184,11 @@ async def update_reranker_config(
 ):
     """更新重排序器配置"""
     config = await _get_config(project_id, db)
-    mem0_config = config.mem0_config or {}
-    mem0_config["reranker"] = data.model_dump(exclude_none=True)
+    mem0_config = copy.deepcopy(config.mem0_config or {})
+    existing = mem0_config.get("reranker", {})
+    existing.update(data.model_dump(exclude_none=True))
+    mem0_config["reranker"] = existing
     config.mem0_config = mem0_config
+    flag_modified(config, "mem0_config")
     invalidate_client(project_id)
     return _config_to_response(config)

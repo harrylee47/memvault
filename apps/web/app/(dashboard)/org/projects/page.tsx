@@ -193,6 +193,7 @@ export default function ProjectsPage() {
                 >
                   <Pencil className="h-3.5 w-3.5" />
                 </Button>
+                {projects.length > 1 && (
                 <Button
                   variant="ghost"
                   size="icon"
@@ -202,6 +203,7 @@ export default function ProjectsPage() {
                 >
                   <Trash2 className="h-3.5 w-3.5" />
                 </Button>
+                )}
               </div>
             </CardHeader>
             <CardContent>
