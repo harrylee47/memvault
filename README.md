@@ -315,6 +315,8 @@ MemVault 原生支持 [Model Context Protocol (MCP)](https://modelcontextprotoco
 
 MemVault 提供 OpenClaw 插件 [`@rigouu0407/openclaw-plugin`](https://www.npmjs.com/package/@rigouu0407/openclaw-plugin)，为 OpenClaw Agent 框架添加持久化记忆能力。
 
+v1.2.0 起，插件与 OpenClaw 原生 Markdown 记忆系统（`MEMORY.md` + daily log）**协同工作**，实现三层互补召回和双写捕获。
+
 ### 安装
 
 ```bash
@@ -339,7 +341,8 @@ npm install @rigouu0407/openclaw-plugin
         "autoRecall": true,
         "autoCapture": true,
         "captureWindowSize": 6,
-        "topK": 5
+        "topK": 5,
+        "localMemorySync": true
       }
     }
   ]
@@ -361,12 +364,38 @@ npm install @rigouu0407/openclaw-plugin
 | `topK` | number | 否 | 每轮最多召回记忆数 | `5` |
 | `sourceApp` | string | 否 | 来源标识 | `"openclaw"` |
 | `threshold` | number | 否 | 搜索相似度阈值 (0-1) | — |
+| `workspacePath` | string | 否 | OpenClaw 工作区路径（含 MEMORY.md 和 memory/ 目录） | `~/.openclaw/workspace` |
+| `localMemorySync` | boolean | 否 | 捕获记忆时是否同步写入本地 MEMORY.md 和 daily log | `true` |
 
-### 工作原理
+### 工作原理：三层互补召回 + 双写捕获
 
-1. **自动召回 (Auto-Recall)**: 每次用户发送消息前，插件自动用最近一条用户消息作为查询，从 MemVault 检索相关记忆并注入到 Agent 上下文中
-2. **自动提取 (Auto-Capture)**: Agent 回复后，插件将最近的对话消息（默认 6 条，即 3 轮对话）发送给 MemVault，由 LLM 自动提取关键事实存储为记忆
-3. **手动工具**: Agent 还可主动调用 `memory_search`、`memory_store`、`memory_list`、`memory_get`、`memory_forget` 5 个工具
+**自动召回 (Auto-Recall)** — 每次用户发送消息前，从三个来源合并上下文：
+
+| 层 | 来源 | 擅长 |
+|---|---|---|
+| MemVault | 向量数据库 | 语义相似度匹配、跨会话积累 |
+| MEMORY.md | 本地文件 | 人工策划的核心事实和决策 |
+| Daily log | 本地文件 | 最近 1-2 天的活动上下文 |
+
+**自动捕获 (Auto-Capture)** — Agent 回复后，双写：
+1. 提取记忆存入 MemVault 向量数据库
+2. 同步追加到本地 `MEMORY.md` 和今日 daily log（保持本地文件与 MemVault 一致）
+
+**工具互补** — Agent 同时拥有两套搜索能力：
+- `memory_search` — OpenClaw 原生工具（BM25 搜索本地 md 文件）
+- `memvault_search` — MemVault 插件（语义搜索向量数据库，跨设备跨 Agent）
+
+### Agent 工具
+
+所有 MemVault 工具使用 `memvault_` 前缀，避免与 OpenClaw 原生 `memory_*` 工具冲突：
+
+| 工具 | 说明 |
+|------|------|
+| `memvault_search` | 语义搜索 MemVault 向量数据库 |
+| `memvault_store` | 显式存储一条记忆 |
+| `memvault_list` | 列出所有记忆 |
+| `memvault_get` | 获取单条记忆详情 |
+| `memvault_forget` | 删除指定记忆 |
 
 ### CLI 命令
 
@@ -374,9 +403,18 @@ npm install @rigouu0407/openclaw-plugin
 # 搜索记忆
 openclaw memvault search "用户偏好"
 
-# 查看统计
+# 查看统计（包含本地文件信息）
 openclaw memvault stats
+
+# 将本地 OpenClaw 记忆导入 MemVault（一次性迁移）
+openclaw memvault sync
 ```
+
+### 从 v1.1.x 升级
+
+- **工具重命名**: `memory_search` → `memvault_search`，`memory_store` → `memvault_store` 等。Agent 侧动态发现工具，无需手动修改配置
+- **向后兼容**: 如果工作区目录不存在，所有本地功能静默跳过，插件行为与 v1.1.x 完全一致
+- 设置 `localMemorySync: false` 可关闭本地文件写入
 
 ---
 

@@ -3,7 +3,7 @@
   "name": "MemVault Memory",
   "description": "Persistent cross-session memory for OpenClaw agents, powered by MemVault",
   "kind": "memory",
-  "version": "1.0.0",
+  "version": "1.2.0",
   "configSchema": {
     "type": "object",
     "properties": {
@@ -56,6 +56,15 @@
       "threshold": {
         "type": "number",
         "description": "Minimum similarity score (0-1) for search results filtering"
+      },
+      "workspacePath": {
+        "type": "string",
+        "description": "Path to OpenClaw workspace directory containing MEMORY.md and memory/ folder. Auto-detected if not set (~/.openclaw/workspace)"
+      },
+      "localMemorySync": {
+        "type": "boolean",
+        "description": "Sync captured memories back to local MEMORY.md and daily log files",
+        "default": true
       }
     },
     "required": ["apiBaseUrl", "apiKey", "projectId", "agentId"]
@@ -101,6 +110,13 @@
     "threshold": {
       "label": "Search Threshold",
       "placeholder": "0.5"
+    },
+    "workspacePath": {
+      "label": "Workspace Path",
+      "placeholder": "~/.openclaw/workspace"
+    },
+    "localMemorySync": {
+      "label": "Local Memory Sync"
     }
   }
 }
