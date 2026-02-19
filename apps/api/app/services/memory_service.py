@@ -52,7 +52,7 @@ async def add_memory(
     if memory_type:
         kwargs["memory_type"] = memory_type
 
-    result = client.add(messages, **kwargs)
+    result = client.add(messages, **kwargs, async_mode=False)
 
     # 同步到 PostgreSQL
     affected_memories = []
@@ -188,7 +188,7 @@ async def update_memory(project_id: str, memory_id: str, content: str, db: Async
     if memory.mem0_memory_id:
         client = await _get_mem0_client(project_id, db)
         try:
-            client.update(memory.mem0_memory_id, content)
+            client.update(memory.mem0_memory_id, data=content)
         except Exception as e:
             logger.warning(f"Failed to update mem0 memory: {e}")
 

@@ -44,7 +44,6 @@ def build_mem0_config(project_id: str, project_config: dict | None = None) -> di
                 "port": settings.QDRANT_PORT,
             },
         },
-        "version": "v1.1",
     }
 
     if not project_config:
