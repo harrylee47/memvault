@@ -409,33 +409,122 @@ export default function DocsPage() {
             <section id="openclaw" className="scroll-mt-20 mb-16">
               <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-6">OpenClaw 插件</h2>
               <p className="text-gray-600 dark:text-gray-400 mb-6">
-                通过 OpenClaw 插件生态，可以快速在各种 AI 平台上使用 MemVault 记忆能力。
+                OpenClaw 插件为 AI Agent 增加持久化记忆能力，不修改 OpenClaw 原有行为，纯增量增强。
+                支持 <code className="bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 rounded text-xs">enhance</code> 和 <code className="bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 rounded text-xs">standalone</code> 两种记忆模式。
               </p>
 
               <h3 className="text-lg font-semibold text-gray-900 dark:text-white mt-6 mb-3">
                 安装
               </h3>
-              <CodeBlock title="Terminal">{`pip install openclaw
-openclaw install memvault`}</CodeBlock>
+              <CodeBlock title="Terminal">{`npm install @rigouu0407/openclaw-plugin`}</CodeBlock>
 
               <h3 className="text-lg font-semibold text-gray-900 dark:text-white mt-8 mb-3">
                 配置
               </h3>
-              <CodeBlock title="openclaw.yaml">{`plugins:
-  memvault:
-    api_url: https://YOUR_MEMVAULT_HOST
-    api_key: YOUR_API_KEY
-    project_id: YOUR_PROJECT_ID`}</CodeBlock>
+              <CodeBlock title="openclaw.config.json">{`{
+  "plugins": {
+    "memvault": {
+      "apiUrl": "https://YOUR_MEMVAULT_HOST",
+      "apiKey": "YOUR_API_KEY",
+      "projectId": "YOUR_PROJECT_ID",
+      "memoryMode": "enhance"
+    }
+  }
+}`}</CodeBlock>
 
               <h3 className="text-lg font-semibold text-gray-900 dark:text-white mt-8 mb-3">
-                可用工具
+                记忆模式
               </h3>
-              <ul className="list-disc list-inside space-y-2 text-gray-600 dark:text-gray-400">
-                <li><code className="bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 rounded text-xs">memvault_add</code> — 添加记忆</li>
-                <li><code className="bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 rounded text-xs">memvault_search</code> — 搜索记忆</li>
-                <li><code className="bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 rounded text-xs">memvault_list</code> — 列出所有记忆</li>
-                <li><code className="bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 rounded text-xs">memvault_delete</code> — 删除记忆</li>
-              </ul>
+              <p className="text-gray-600 dark:text-gray-400 mb-4">
+                插件提供两种记忆模式，可通过 <code className="bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 rounded text-xs">memoryMode</code> 配置项切换：
+              </p>
+              <div className="overflow-x-auto mb-6">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b dark:border-gray-800">
+                      <th className="text-left py-3 pr-4 font-semibold text-gray-900 dark:text-white">模式</th>
+                      <th className="text-left py-3 pr-4 font-semibold text-gray-900 dark:text-white">人设来源</th>
+                      <th className="text-left py-3 font-semibold text-gray-900 dark:text-white">说明</th>
+                    </tr>
+                  </thead>
+                  <tbody className="text-gray-600 dark:text-gray-400">
+                    <tr className="border-b dark:border-gray-800">
+                      <td className="py-2.5 pr-4 font-mono text-xs">enhance</td>
+                      <td className="py-2.5 pr-4">MEMORY.md</td>
+                      <td className="py-2.5">增强模式 — MEMORY.md 提供人设，MemVault 提供记忆，两者协同工作</td>
+                    </tr>
+                    <tr className="border-b dark:border-gray-800">
+                      <td className="py-2.5 pr-4 font-mono text-xs">standalone</td>
+                      <td className="py-2.5 pr-4">MemVault</td>
+                      <td className="py-2.5">独立模式 — 所有记忆完全由 MemVault 管理，不依赖本地文件</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-white mt-8 mb-3">
+                工作原理
+              </h3>
+              <p className="text-gray-600 dark:text-gray-400 mb-6">
+                在 <code className="bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 rounded text-xs">enhance</code> 模式下，
+                <code className="bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 rounded text-xs">MEMORY.md</code> 充当 Agent 的"人设"（角色定义、行为准则），
+                而 MemVault 充当"记忆"（对话上下文、用户偏好、历史事实）。
+                Agent 在每次对话时自动加载人设 + 检索相关记忆，实现持久化的个性化交互。
+              </p>
+
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-white mt-8 mb-3">
+                Agent 工具
+              </h3>
+              <p className="text-gray-600 dark:text-gray-400 mb-4">
+                插件向 Agent 注册以下 5 个工具：
+              </p>
+              <div className="overflow-x-auto mb-6">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b dark:border-gray-800">
+                      <th className="text-left py-3 pr-4 font-semibold text-gray-900 dark:text-white">Tool</th>
+                      <th className="text-left py-3 font-semibold text-gray-900 dark:text-white">说明</th>
+                    </tr>
+                  </thead>
+                  <tbody className="text-gray-600 dark:text-gray-400">
+                    <tr className="border-b dark:border-gray-800">
+                      <td className="py-2.5 pr-4 font-mono text-xs">memvault_add</td>
+                      <td className="py-2.5">添加一条新记忆到 MemVault</td>
+                    </tr>
+                    <tr className="border-b dark:border-gray-800">
+                      <td className="py-2.5 pr-4 font-mono text-xs">memvault_search</td>
+                      <td className="py-2.5">语义搜索相关记忆</td>
+                    </tr>
+                    <tr className="border-b dark:border-gray-800">
+                      <td className="py-2.5 pr-4 font-mono text-xs">memvault_get</td>
+                      <td className="py-2.5">获取指定 ID 的记忆详情</td>
+                    </tr>
+                    <tr className="border-b dark:border-gray-800">
+                      <td className="py-2.5 pr-4 font-mono text-xs">memvault_update</td>
+                      <td className="py-2.5">更新已有记忆的内容</td>
+                    </tr>
+                    <tr className="border-b dark:border-gray-800">
+                      <td className="py-2.5 pr-4 font-mono text-xs">memvault_delete</td>
+                      <td className="py-2.5">删除指定记忆</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-white mt-8 mb-3">
+                CLI 命令
+              </h3>
+              <p className="text-gray-600 dark:text-gray-400 mb-4">
+                插件还提供命令行工具，用于调试和管理记忆：
+              </p>
+              <CodeBlock title="Terminal">{`# 语义搜索记忆
+memvault search "用户偏好的编程语言"
+
+# 查看记忆统计信息
+memvault stats
+
+# 同步本地记忆到远程
+memvault sync`}</CodeBlock>
             </section>
 
             {/* ===== Webhook ===== */}
