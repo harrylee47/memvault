@@ -23,7 +23,7 @@
 | 层级 | 技术 |
 |------|------|
 | **后端 API** | Python 3.12 · FastAPI · SQLAlchemy (async) · Alembic |
-| **AI 引擎** | mem0ai · OpenAI (GPT-4o-mini / text-embedding-3-small) |
+| **AI 引擎** | mem0ai 1.0 · OpenAI (GPT-4o-mini / text-embedding-3-small) |
 | **前端** | Next.js 14 · React 18 · Tailwind CSS · shadcn/ui · Zustand · Recharts |
 | **数据库** | PostgreSQL 16 · Qdrant (向量存储) · Redis 7 (缓存/限流) |
 | **可选** | Neo4j 5 (图存储) · GitHub/Google OAuth |

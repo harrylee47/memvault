@@ -52,7 +52,7 @@ async def add_memory(
     if memory_type:
         kwargs["memory_type"] = memory_type
 
-    result = client.add(messages, **kwargs, async_mode=False)
+    result = client.add(messages, **kwargs)
 
     # 同步到 PostgreSQL
     affected_memories = []

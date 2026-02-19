@@ -252,7 +252,7 @@ async def _handle_tool_call(project_id: str, tool_name: str, arguments: dict) ->
         if arguments.get("metadata"):
             kwargs["metadata"] = arguments["metadata"]
 
-        result = client.add(messages, **kwargs, async_mode=False)
+        result = client.add(messages, **kwargs)
         return [{"type": "text", "text": json.dumps(result, ensure_ascii=False, default=str)}]
 
     elif tool_name == "search_memory":
