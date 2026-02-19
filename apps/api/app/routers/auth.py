@@ -19,6 +19,19 @@ router = APIRouter(prefix="/auth", tags=["认证"])
 @router.post("/register", response_model=TokenResponse)
 async def register(data: UserRegister, db: AsyncSession = Depends(get_db)):
     """注册新用户"""
+    from app.models.system_setting import SystemSetting
+
+    # 检查注册开关
+    result = await db.execute(
+        select(SystemSetting).where(SystemSetting.key == "registration_enabled")
+    )
+    setting = result.scalar_one_or_none()
+    if setting and setting.value == "false":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Registration is currently disabled",
+        )
+
     _, tokens = await register_user(data, db)
     return tokens
 
@@ -59,6 +72,8 @@ async def update_me(
     db: AsyncSession = Depends(get_db),
 ):
     """更新当前用户信息"""
+    from app.middleware.auth import hash_password, verify_password
+
     if not auth.user:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED)
     user = auth.user
@@ -66,6 +81,21 @@ async def update_me(
         user.name = data.name
     if data.avatar_url is not None:
         user.avatar_url = data.avatar_url
+
+    # 修改密码
+    if data.new_password:
+        if user.provider != "email":
+            raise HTTPException(status_code=400, detail="OAuth 用户无法修改密码")
+        if not data.old_password:
+            raise HTTPException(status_code=400, detail="请输入当前密码")
+        if not verify_password(data.old_password, user.hashed_password or ""):
+            raise HTTPException(status_code=400, detail="当前密码不正确")
+        if len(data.new_password) < 6:
+            raise HTTPException(status_code=400, detail="新密码至少 6 位字符")
+        user.hashed_password = hash_password(data.new_password)
+
+    await db.commit()
+    await db.refresh(user)
     return user
 
 
@@ -109,6 +139,44 @@ async def _oauth_login_or_register(
             avatar_url=avatar_url,
         )
         db.add(user)
+        await db.flush()
+
+        # 为新 OAuth 用户创建默认组织和项目
+        import secrets as _secrets
+        from app.models.organization import Organization, OrgMember, OrgRole
+        from app.models.project import Project, ProjectConfig
+
+        slug = email.split("@")[0].lower().replace(".", "-")
+        org = Organization(
+            id=str(uuid.uuid4()),
+            name=f"{name}'s Org",
+            slug=f"{slug}-{_secrets.token_hex(3)}",
+        )
+        db.add(org)
+
+        member = OrgMember(
+            id=str(uuid.uuid4()),
+            org_id=org.id,
+            user_id=user.id,
+            role=OrgRole.OWNER,
+        )
+        db.add(member)
+
+        project = Project(
+            id=str(uuid.uuid4()),
+            org_id=org.id,
+            name="Default Project",
+            slug="default",
+            created_by=user.id,
+        )
+        db.add(project)
+
+        project_config = ProjectConfig(
+            id=str(uuid.uuid4()),
+            project_id=project.id,
+            mem0_config={},
+        )
+        db.add(project_config)
         await db.flush()
 
     token_data = {"sub": user.id, "email": user.email}

@@ -1,9 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useAuthStore } from "@/store/auth";
+import { api } from "@/lib/api-client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -19,8 +20,19 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [registrationEnabled, setRegistrationEnabled] = useState(true);
   const { login } = useAuthStore();
   const router = useRouter();
+
+  useEffect(() => {
+    api.getSystemSettings()
+      .then((settings) => {
+        if (settings.registration_enabled === "false") {
+          setRegistrationEnabled(false);
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -28,7 +40,7 @@ export default function LoginPage() {
     setLoading(true);
     try {
       await login(email, password);
-      router.push("/");
+      router.push("/overview");
     } catch (err: any) {
       setError(err.message || "登录失败");
     } finally {
@@ -136,12 +148,14 @@ export default function LoginPage() {
               Continue with Google
             </Button>
 
-            <p className="text-sm text-muted-foreground">
-              还没有账号？{" "}
-              <Link href="/register" className="text-primary hover:underline">
-                注册
-              </Link>
-            </p>
+            {registrationEnabled && (
+              <p className="text-sm text-muted-foreground">
+                还没有账号？{" "}
+                <Link href="/register" className="text-primary hover:underline">
+                  注册
+                </Link>
+              </p>
+            )}
           </CardFooter>
         </form>
       </Card>

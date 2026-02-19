@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.routers import (
     auth, organizations, projects, memories, config,
     api_keys, agents, analytics, webhooks, audit_logs, graph,
-    requests, admin,
+    requests, admin, plans, system,
 )
 from app.mcp import mcp_router
 from app.middleware.rate_limit import RateLimitMiddleware
@@ -160,6 +160,8 @@ app.include_router(audit_logs.router, prefix="/api/v1")
 app.include_router(graph.router, prefix="/api/v1")
 app.include_router(requests.router, prefix="/api/v1")
 app.include_router(admin.router, prefix="/api/v1")
+app.include_router(plans.router, prefix="/api/v1")
+app.include_router(system.router, prefix="/api/v1")
 
 # MCP SSE 端点（不使用 /api/v1 前缀，供 Claude Desktop / Cursor 直接连接）
 app.include_router(mcp_router)

@@ -37,10 +37,25 @@
         "description": "Auto-extract and store memories after each response",
         "default": true
       },
+      "captureWindowSize": {
+        "type": "number",
+        "description": "Number of recent messages sent for memory extraction on each turn. Larger windows give the LLM more context to understand conversation flow and extract accurate memories. Recommended: 6 (3 rounds). Minimum: 2 (1 round).",
+        "default": 6,
+        "minimum": 2
+      },
       "topK": {
         "type": "number",
         "description": "Max number of memories to recall per turn",
         "default": 5
+      },
+      "sourceApp": {
+        "type": "string",
+        "description": "Source app identifier for tracking memory origin",
+        "default": "openclaw"
+      },
+      "threshold": {
+        "type": "number",
+        "description": "Minimum similarity score (0-1) for search results filtering"
       }
     },
     "required": ["apiBaseUrl", "apiKey", "projectId", "agentId"]
@@ -72,8 +87,20 @@
     "autoCapture": {
       "label": "Auto Capture"
     },
+    "captureWindowSize": {
+      "label": "Capture Window",
+      "placeholder": "6"
+    },
     "topK": {
       "label": "Top K Results"
+    },
+    "sourceApp": {
+      "label": "Source App",
+      "placeholder": "openclaw"
+    },
+    "threshold": {
+      "label": "Search Threshold",
+      "placeholder": "0.5"
     }
   }
 }

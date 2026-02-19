@@ -7,6 +7,9 @@ from app.models.api_key import ApiKey
 from app.models.webhook import Webhook
 from app.models.audit_log import AuditLog
 from app.models.request_log import RequestLog
+from app.models.plan import Plan
+from app.models.redemption_code import RedemptionCode, RedemptionLog
+from app.models.system_setting import SystemSetting
 
 __all__ = [
     "User",
@@ -22,4 +25,8 @@ __all__ = [
     "Webhook",
     "AuditLog",
     "RequestLog",
+    "Plan",
+    "RedemptionCode",
+    "RedemptionLog",
+    "SystemSetting",
 ]

@@ -25,7 +25,10 @@ interface PluginConfig {
   userId?: string;
   autoRecall?: boolean;
   autoCapture?: boolean;
+  captureWindowSize?: number;
   topK?: number;
+  sourceApp?: string;
+  threshold?: number;
 }
 
 interface Memory {
@@ -103,9 +106,15 @@ class MemVaultClient {
 
   /** Add memories from a conversation */
   async addMemory(
-    messages: Array<{ role: string; content: string }>,
+    messages: Array<{ role: string; content: string }> | string,
     agentId: string,
-    userId?: string
+    userId?: string,
+    options: {
+      sourceApp?: string;
+      infer?: boolean;
+      prompt?: string;
+      memoryType?: string;
+    } = {}
   ) {
     return this.request<{ results: Memory[] }>("/api/v1/memories", {
       method: "POST",
@@ -113,6 +122,10 @@ class MemVaultClient {
         messages,
         agent_id: agentId,
         user_id: userId,
+        ...(options.sourceApp && { source_app: options.sourceApp }),
+        ...(options.infer === false && { infer: false }),
+        ...(options.prompt && { prompt: options.prompt }),
+        ...(options.memoryType && { memory_type: options.memoryType }),
       }),
     });
   }
@@ -121,7 +134,7 @@ class MemVaultClient {
   async searchMemories(
     query: string,
     agentId: string,
-    options: { userId?: string; limit?: number } = {}
+    options: { userId?: string; limit?: number; threshold?: number } = {}
   ) {
     return this.request<{ results: Memory[] }>("/api/v1/memories/search", {
       method: "POST",
@@ -130,6 +143,7 @@ class MemVaultClient {
         agent_id: agentId,
         user_id: options.userId,
         limit: options.limit || 5,
+        ...(options.threshold !== undefined && { threshold: options.threshold }),
       }),
     });
   }
@@ -198,7 +212,10 @@ export default {
     const defaultUserId = config.userId || "default";
     const autoRecall = config.autoRecall !== false;
     const autoCapture = config.autoCapture !== false;
+    const captureWindowSize = config.captureWindowSize || 6;
     const topK = config.topK || 5;
+    const sourceApp = config.sourceApp || "openclaw";
+    const searchThreshold = config.threshold;
 
     // -------------------------------------------------------------------
     // Hook: Auto-Recall — inject relevant memories before agent responds
@@ -221,7 +238,7 @@ export default {
             const result = await client.searchMemories(
               lastUserMsg.content,
               agentId,
-              { userId: defaultUserId, limit: topK }
+              { userId: defaultUserId, limit: topK, threshold: searchThreshold }
             );
 
             const memories = result.results || [];
@@ -250,11 +267,11 @@ export default {
               role: string;
               content: string;
             }>;
-            // Send the last user + assistant pair
-            const recent = messages.slice(-4);
+            // Send recent conversation messages for memory extraction
+            const recent = messages.slice(-captureWindowSize);
             if (recent.length < 2) return {};
 
-            await client.addMemory(recent, agentId, defaultUserId);
+            await client.addMemory(recent, agentId, defaultUserId, { sourceApp });
           } catch (err) {
             console.error("[memvault] auto-capture failed:", err);
           }
@@ -278,6 +295,9 @@ export default {
         userId: Type.Optional(
           Type.String({ description: "Scope to a specific user" })
         ),
+        threshold: Type.Optional(
+          Type.Number({ description: "Minimum similarity score (0-1)" })
+        ),
       }),
       async execute(_id, params) {
         const result = await client.searchMemories(
@@ -286,6 +306,7 @@ export default {
           {
             userId: (params.userId as string) || defaultUserId,
             limit: (params.limit as number) || 5,
+            threshold: (params.threshold as number) ?? searchThreshold,
           }
         );
         const memories = result.results || [];
@@ -312,14 +333,20 @@ export default {
           description: "The information to store as a memory",
         }),
         userId: Type.Optional(Type.String({ description: "User ID" })),
+        memoryType: Type.Optional(
+          Type.String({ description: 'Memory type: "semantic" (default) or "procedural_memory" (agent behavior rules)' })
+        ),
       }),
       async execute(_id, params) {
         await client.addMemory(
-          [
-            { role: "assistant", content: params.content as string },
-          ],
+          (params.content as string),
           agentId,
-          (params.userId as string) || defaultUserId
+          (params.userId as string) || defaultUserId,
+          {
+            sourceApp,
+            infer: false,
+            memoryType: params.memoryType as string | undefined,
+          }
         );
         return toolOk("Memory stored successfully.");
       },
@@ -443,7 +470,7 @@ export default {
     });
 
     console.log(
-      `[memvault] Plugin loaded — agent=${agentId} recall=${autoRecall} capture=${autoCapture}`
+      `[memvault] Plugin loaded — agent=${agentId} recall=${autoRecall} capture=${autoCapture} captureWindow=${captureWindowSize}`
     );
   },
 };

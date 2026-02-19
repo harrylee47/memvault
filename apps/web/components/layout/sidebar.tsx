@@ -20,10 +20,11 @@ import {
   ArrowUpRight,
   CreditCard,
   ShieldCheck,
+  UserCircle,
 } from "lucide-react";
 
 const navigation = [
-  { name: "概览", href: "/", icon: LayoutDashboard },
+  { name: "概览", href: "/overview", icon: LayoutDashboard },
   { name: "Requests", href: "/requests", icon: ArrowUpRight },
   { name: "记忆管理", href: "/memories", icon: Brain },
   { name: "Agent", href: "/agents", icon: Bot },
@@ -45,6 +46,7 @@ const orgNav = [
 ];
 
 const accountNav = [
+  { name: "个人资料", href: "/profile", icon: UserCircle },
   { name: "Billing & Usage", href: "/billing", icon: CreditCard },
 ];
 
@@ -139,7 +141,7 @@ export function Sidebar() {
         ))}
 
         {/* 系统管理 - 仅管理员可见 */}
-        {(user as any)?.is_admin && (
+        {user?.is_admin && (
           <>
             <div className="mb-2 mt-6 px-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
               系统管理

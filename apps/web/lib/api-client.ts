@@ -88,6 +88,13 @@ class ApiClient {
     return this.request<any>("/api/v1/auth/me");
   }
 
+  async updateMe(data: { name?: string; avatar_url?: string; old_password?: string; new_password?: string }) {
+    return this.request<any>("/api/v1/auth/me", {
+      method: "PUT",
+      body: JSON.stringify(data),
+    });
+  }
+
   // =====================
   // Organizations
   // =====================
@@ -360,7 +367,7 @@ class ApiClient {
     return this.request<any[]>(`/api/v1/webhooks?project_id=${projectId}`);
   }
 
-  async createWebhook(projectId: string, data: { url: string; events?: string[] }) {
+  async createWebhook(projectId: string, data: { url: string; format?: string; events?: string[] }) {
     return this.request<any>(`/api/v1/webhooks?project_id=${projectId}`, {
       method: "POST",
       body: JSON.stringify(data),
@@ -409,14 +416,32 @@ class ApiClient {
   // =====================
   // Billing / Plans
   // =====================
+  async getPlans() {
+    return this.request<any[]>("/api/v1/plans");
+  }
+
   async getBillingUsage(orgId: string) {
     return this.request<any>(`/api/v1/organizations/${orgId}/billing`);
   }
 
-  async updateOrgPlan(orgId: string, plan: string) {
-    return this.request<any>(`/api/v1/organizations/${orgId}/plan`, {
+  async redeemCode(orgId: string, code: string) {
+    return this.request<any>(`/api/v1/organizations/${orgId}/redeem`, {
+      method: "POST",
+      body: JSON.stringify({ code }),
+    });
+  }
+
+  // =====================
+  // System Settings
+  // =====================
+  async getSystemSettings() {
+    return this.request<Record<string, string>>("/api/v1/system/settings");
+  }
+
+  async adminUpdateSystemSettings(data: Record<string, string>) {
+    return this.request<any>("/api/v1/system/settings", {
       method: "PUT",
-      body: JSON.stringify({ plan }),
+      body: JSON.stringify(data),
     });
   }
 
@@ -428,10 +453,30 @@ class ApiClient {
     return this.request<any>(`/api/v1/admin/users?${searchParams}`);
   }
 
+  async adminCreateUser(data: { email: string; name: string; password: string }) {
+    return this.request<any>("/api/v1/admin/users", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  }
+
   async adminUpdateUser(userId: string, data: any) {
     return this.request<any>(`/api/v1/admin/users/${userId}`, {
       method: "PUT",
       body: JSON.stringify(data),
+    });
+  }
+
+  async adminDeleteUser(userId: string) {
+    return this.request<void>(`/api/v1/admin/users/${userId}`, {
+      method: "DELETE",
+    });
+  }
+
+  async adminResetPassword(userId: string, password: string) {
+    return this.request<any>(`/api/v1/admin/users/${userId}/reset-password`, {
+      method: "POST",
+      body: JSON.stringify({ password }),
     });
   }
 
@@ -440,8 +485,74 @@ class ApiClient {
     return this.request<any>(`/api/v1/admin/organizations?${searchParams}`);
   }
 
+  async adminUpdateOrganization(orgId: string, data: any) {
+    return this.request<any>(`/api/v1/admin/organizations/${orgId}`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    });
+  }
+
   async adminGetStats() {
     return this.request<any>("/api/v1/admin/stats");
+  }
+
+  // =====================
+  // Admin - Plans
+  // =====================
+  async adminGetPlans() {
+    return this.request<any[]>("/api/v1/admin/plans");
+  }
+
+  async adminCreatePlan(data: any) {
+    return this.request<any>("/api/v1/admin/plans", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  }
+
+  async adminUpdatePlan(planId: string, data: any) {
+    return this.request<any>(`/api/v1/admin/plans/${planId}`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    });
+  }
+
+  async adminDeletePlan(planId: string) {
+    return this.request<void>(`/api/v1/admin/plans/${planId}`, {
+      method: "DELETE",
+    });
+  }
+
+  // =====================
+  // Admin - Redemption Codes
+  // =====================
+  async adminGetRedemptionCodes(params: Record<string, any> = {}) {
+    const searchParams = new URLSearchParams(params);
+    return this.request<any>(`/api/v1/admin/redemption-codes?${searchParams}`);
+  }
+
+  async adminCreateRedemptionCodes(data: any) {
+    return this.request<any>("/api/v1/admin/redemption-codes", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  }
+
+  async adminUpdateRedemptionCode(codeId: string, data: any) {
+    return this.request<any>(`/api/v1/admin/redemption-codes/${codeId}`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    });
+  }
+
+  async adminDeleteRedemptionCode(codeId: string) {
+    return this.request<void>(`/api/v1/admin/redemption-codes/${codeId}`, {
+      method: "DELETE",
+    });
+  }
+
+  async adminGetRedemptionCodeLogs(codeId: string) {
+    return this.request<any>(`/api/v1/admin/redemption-codes/${codeId}/logs`);
   }
 }
 
